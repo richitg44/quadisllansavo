@@ -1,6 +1,0 @@
-[[redirects]]
-  from = "/api/*"
-  to = "https://script.google.com/macros/s/AKfycbxZZ80nAotc46GStwvL_2cASI9lmqgmfhgFJl_aUPV3uWwtTtcoXQMS4NADsv8qhJEptQ/:splat"
-  status = 200
-  force = true
-  headers = {Access-Control-Allow-Origin = "*", Access-Control-Allow-Methods = "GET, POST, OPTIONS"}
