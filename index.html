@@ -82,6 +82,9 @@ label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase
 .vcard{background:var(--card);border:1px solid var(--border);border-radius:12px;padding:14px;transition:all .2s;position:relative;overflow:hidden;box-shadow:0 2px 10px rgba(0,0,0,.07)}
 .vcard:hover{border-color:var(--red);transform:translateY(-2px)}
 .vcard.isnew{border-color:var(--green);box-shadow:0 0 18px rgba(34,197,94,.1)}
+.vcard.reservado{opacity:.6;border-color:rgba(245,158,11,.4)}
+.vcard.reservado:hover{opacity:.85}
+.rbadge{position:absolute;top:10px;right:10px;background:rgba(245,158,11,.9);color:#000;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.3px}
 .nbadge{position:absolute;top:10px;right:10px;background:var(--green);color:#000;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px}
 .vemoji{font-size:32px;text-align:center;padding:8px}
 .vmodel{font-family:'Nissan Brand',sans-serif;font-size:19px;letter-spacing:1px}
@@ -1556,6 +1559,7 @@ function buildAlertas(){
   ALERTAS=[];
   for(const v of STOCK) for(const c of CLIENTES){
     if(c.estado!=='Activo') continue;
+    if((v.estado||'').toLowerCase().indexOf('reserv')>=0) continue;
     const m=calcMatch(c,v);
     // Descartar si no pasa los filtros obligatorios o score < 50
     if(m.descartar || m.score < 50) continue;
@@ -1861,8 +1865,9 @@ function vcardHtml(v, showCartel){
   const procHtml = v.procedencia
     ? '<div style="position:absolute;top:10px;left:10px;font-size:9px;font-weight:700;letter-spacing:.8px;color:var(--muted);background:var(--mid);border:1px solid var(--border);padding:2px 6px;border-radius:4px;text-transform:uppercase">'+v.procedencia+'</div>'
     : '';
-  return '<div class="vcard '+(v.isNew?'isnew':'')+'">'
-    +(v.isNew?'<div class="nbadge">NUEVO</div>':'')
+  var esReservado = (v.estado||'').toLowerCase().indexOf('reserv') >= 0;
+  return '<div class="vcard '+(v.isNew?'isnew':'')+(esReservado?' reservado':'')+'">'
+    +(esReservado?'<div class="rbadge">RESERVADO</div>':v.isNew?'<div class="nbadge">NUEVO</div>':'')
     +procHtml
     +'<div class="vemoji" style="'+(v.procedencia?'margin-top:14px':'')+'">'+v.foto+'</div>'
     +matHtml(v.matricula)
@@ -2046,7 +2051,7 @@ function renderClientes(){
 }
 
 // €€ STOCK €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
-let stockFiltros = {busqueda:'', modelos:new Set(), cambio:'', orden:''};
+let stockFiltros = {busqueda:'', modelos:new Set(), cambio:'', orden:'', estado:''};
 
 function renderStock(){
   const cambios=[...new Set(STOCK.map(function(v){return v.cambio;}).filter(Boolean))].sort();
@@ -2076,6 +2081,7 @@ function renderStock(){
             +'</select>'
           +'</div>'
           +'<div><label>Ordenar</label><div style="display:flex;gap:5px;margin-top:5px" id="sort-btns"></div><div style="display:flex;gap:5px;margin-top:5px" id="zona-btns"></div></div>'
+          +'<div><label>Estado</label><div style="display:flex;gap:5px;margin-top:5px" id="estado-btns"></div></div>'
         +'</div>'
       +'</div>'
       +'<div style="border-top:1px solid var(--border);padding-top:8px;font-size:12px;color:var(--muted)" id="stock-count"></div>'
@@ -2120,8 +2126,20 @@ function renderStockGrid(){
     }).join('');
   }
 
+  // Estado filter buttons
+  var eb=document.getElementById('estado-btns');
+  if(eb){
+    var estadoActual=stockFiltros.estado;
+    var estados=[['','Todos'],['libre','Libre'],['reservado','Reservado']];
+    eb.innerHTML=estados.map(function(e){
+      var act=estadoActual===e[0];
+      return '<button onclick="stockFiltros.estado=\''+e[0]+'\';renderStockGrid()" style="background:'+(act?'var(--red)':'var(--border)')+';color:'+(act?'white':'var(--muted)')+';border:none;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif">'+e[1]+'</button>';
+    }).join('');
+  }
+
   // Filter
   const zona=stockFiltros.zona;
+  const estadoFiltro=stockFiltros.estado;
   let result=STOCK.filter(function(v){
     if(busqueda){
       const mat=(v.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
@@ -2131,6 +2149,11 @@ function renderStockGrid(){
     if(modelos.size>0&&!modelos.has(v.modelo)) return false;
     if(cambio&&v.cambio!==cambio) return false;
     if(zona&&UBICACIONES[v.id]!==zona) return false;
+    if(estadoFiltro){
+      var est=(v.estado||'').toLowerCase();
+      if(estadoFiltro==='reservado'&&est.indexOf('reserv')<0) return false;
+      if(estadoFiltro==='libre'&&est.indexOf('reserv')>=0) return false;
+    }
     return true;
   });
   if(orden==='asc') result.sort(function(a,b){return a.precio-b.precio;});
@@ -2141,7 +2164,7 @@ function renderStockGrid(){
   const grid=document.getElementById('stock-grid');
   if(grid) grid.innerHTML=result.length
     ?'<div class="grid-auto">'+result.map(function(v){ return vcardHtml(v, true); }).join('')+'</div>'
-    :'<div class="card empty" style="padding:36px"><div style="font-size:36px;margin-bottom:8px"></div>Sin resultados<br><button class="btn sec" style="margin-top:14px;font-size:12px" onclick="stockFiltros={busqueda:\'\',modelos:new Set(),cambio:\'\',orden:\'\'};renderStock()">Limpiar filtros</button></div>';
+    :'<div class="card empty" style="padding:36px"><div style="font-size:36px;margin-bottom:8px"></div>Sin resultados<br><button class="btn sec" style="margin-top:14px;font-size:12px" onclick="stockFiltros={busqueda:\'\',modelos:new Set(),cambio:\'\',orden:\'\',estado:\'\'};renderStock()">Limpiar filtros</button></div>';
 }
 
 // €€ ALERTAS €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
