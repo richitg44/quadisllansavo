@@ -1070,6 +1070,9 @@ document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {
 // €€ CONFIG €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
 let SCRIPT_URL = localStorage.getItem('nissan_vo_script_url') || 'https://script.google.com/macros/s/AKfycbxZZ80nAotc46GStwvL_2cASI9lmqgmfhgFJl_aUPV3uWwtTtcoXQMS4NADsv8qhJEptQ/exec';
 let SHEETS_CONECTADO = false;
+let LAST_SYNC = null;
+let AUTO_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutos
+let _autoSyncTimer = null;
 
 // €€ DATA €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
 let STOCK = [{
@@ -1193,6 +1196,7 @@ async function cargarDatos() {
       res.ubicaciones.forEach(function(r){ if(r.id && r.zona) UBICACIONES[r.id]=r.zona; });
     }
     SHEETS_CONECTADO = true;
+    LAST_SYNC = new Date();
     hideLoadingBanner();
     return true;
   } catch(e) {
@@ -1200,6 +1204,45 @@ async function cargarDatos() {
     console.error('Error Sheets:', e);
     return false;
   }
+}
+
+// Refresco silencioso: recarga stock y clientes sin mostrar banner de carga
+async function refrescarDatosSilencioso() {
+  if (!SCRIPT_URL || !SHEETS_CONECTADO) return;
+  try {
+    const res = await apiCall('getAll');
+    STOCK = (res.stock||[]).filter(r=>r.id).map(parseStock);
+    CLIENTES = (res.clientes||[]).filter(r=>r.id).map(parseCliente);
+    if (res.ubicaciones) {
+      UBICACIONES = {};
+      res.ubicaciones.forEach(function(r){ if(r.id && r.zona) UBICACIONES[r.id]=r.zona; });
+    }
+    LAST_SYNC = new Date();
+    buildAlertas();
+    renderDashboard();
+    updateBadges();
+    console.log('Auto-sync completado:', LAST_SYNC.toLocaleTimeString('es-ES'));
+  } catch(e) {
+    console.error('Auto-sync error:', e);
+  }
+}
+
+function iniciarAutoSync() {
+  if (_autoSyncTimer) clearInterval(_autoSyncTimer);
+  _autoSyncTimer = setInterval(refrescarDatosSilencioso, AUTO_SYNC_INTERVAL);
+}
+
+function pararAutoSync() {
+  if (_autoSyncTimer) { clearInterval(_autoSyncTimer); _autoSyncTimer = null; }
+}
+
+// Refresco manual con feedback visual
+async function refrescarManual() {
+  var btn = document.getElementById('btn-refresh-sync');
+  if (btn) { btn.disabled = true; btn.textContent = 'Sincronizando...'; }
+  await refrescarDatosSilencioso();
+  if (btn) { btn.disabled = false; btn.textContent = 'Actualizar ahora'; }
+  showSyncOk('Stock actualizado desde Google Sheets');
 }
 
 async function syncCliente(c) {
@@ -1835,7 +1878,14 @@ function renderDashboard(){
     if(ALERTAS.length>3) alertasHtml+='<button class="btn sec w100 mt3" onclick="showTab(\'alertas\')">Ver todas las alertas ('+ALERTAS.length+') </button>';
   }
   document.getElementById('tab-dashboard').innerHTML=
-    '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">'      +'<div class="section-title" style="margin-bottom:0">DASHBOARD</div>'      +(SCRIPT_URL        ?'<button onclick="desconectarSheets()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px"><span style="color:var(--green);font-size:9px">&#9679;</span> Sheets conectado &middot; Desconectar</button>'        :'<button onclick="abrirModalConectar()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px"><span style="color:#ff3b30;font-size:9px">&#9679;</span> Sin conexi&oacute;n &middot; Conectar</button>'      )    +'</div>'    +'<div class="section-sub">'+new Date().toLocaleDateString('es-ES',{weekday:'long',year:'numeric',month:'long',day:'numeric'})+'</div>'
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">'      +'<div class="section-title" style="margin-bottom:0">DASHBOARD</div>'      +(SCRIPT_URL        ?'<button onclick="desconectarSheets()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px"><span style="color:var(--green);font-size:9px">&#9679;</span> Sheets conectado &middot; Desconectar</button>'        :'<button onclick="abrirModalConectar()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px"><span style="color:#ff3b30;font-size:9px">&#9679;</span> Sin conexi&oacute;n &middot; Conectar</button>'      )    +'</div>'    +'<div class="section-sub" style="display:flex;align-items:center;justify-content:space-between">'+new Date().toLocaleDateString('es-ES',{weekday:'long',year:'numeric',month:'long',day:'numeric'})
+    +(SHEETS_CONECTADO && LAST_SYNC
+      ?'<span style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)">'
+        +'<span>Sync: '+LAST_SYNC.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+'</span>'
+        +'<button id="btn-refresh-sync" onclick="refrescarManual()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:3px 8px;border-radius:6px;cursor:pointer;font-size:11px;font-family:DM Sans,sans-serif">Actualizar ahora</button>'
+      +'</span>'
+      :'')
+    +'</div>'
     +'<div class="grid-3">'
       +'<div class="stat-card" onclick="showTab(\'clientes\')" onmouseover="this.style.boxShadow=\'0 6px 24px rgba(0,0,0,.13)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.boxShadow=\'\';this.style.transform=\'\'" style="cursor:pointer;transition:box-shadow .18s,transform .18s"><div class="stat-icon si-red"><svg width="20" height="20" viewBox="0 0 24 24" fill="#C3002F"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></div><div><div class="stat-value">'+CLIENTES.filter(function(c){return c.estado==='Activo';}).length+'</div><div class="stat-label">Clientes activos</div></div></div>'
       +'<div class="stat-card" onclick="showTab(\'stock\')" onmouseover="this.style.boxShadow=\'0 6px 24px rgba(0,0,0,.13)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.boxShadow=\'\';this.style.transform=\'\'" style="cursor:pointer;transition:box-shadow .18s,transform .18s"><div class="stat-icon si-green"><svg width="20" height="20" viewBox="0 0 24 24" fill="#22c55e"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg></div><div><div class="stat-value">'+STOCK.length+'</div><div class="stat-label">Vehículos en stock</div></div></div>'
@@ -3243,6 +3293,7 @@ async function init(){
     loadMsgs();
     updateBadges();
     if(ok){
+      iniciarAutoSync();
       showSyncOk(' Conectado a Google Sheets');
     } else {
       hideLoadingBanner();
@@ -3294,9 +3345,11 @@ function mostrarConfigSheet(){
 
 function desconectarSheets(){
   if(!confirm('¿Desconectar Google Sheets? Podrás volver a conectar con una URL nueva.')) return;
+  pararAutoSync();
   SCRIPT_URL='';
   localStorage.removeItem('nissan_vo_script_url');
   SHEETS_CONECTADO=false;
+  LAST_SYNC=null;
   renderDashboard();
   showSyncOk('Desconectado de Google Sheets');
 }
@@ -3326,7 +3379,7 @@ function conectarSheet(){
   closeModal();
   showLoadingBanner('Verificando conexión...');
   cargarDatos().then(function(ok){
-    if(ok){ buildAlertas(); renderDashboard(); loadMsgs(); updateBadges(); showSyncOk(' Conectado a Google Sheets'); }
+    if(ok){ iniciarAutoSync(); buildAlertas(); renderDashboard(); loadMsgs(); updateBadges(); showSyncOk(' Conectado a Google Sheets'); }
     else { alert('No se pudo conectar. Verifica la URL y que la implementación es pública.'); SCRIPT_URL=''; localStorage.removeItem('nissan_vo_script_url'); renderDashboard(); }
   });
 }
