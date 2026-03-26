@@ -2295,14 +2295,14 @@ async function generarCartelPDF(vehiculoId, entrada) {
     const cartelEl = document.getElementById('cartel-preview');
     if (!cartelEl) { alert('No se encontró el cartel'); return; }
 
-    const canvas = await html2canvas(cartelEl, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const canvas = await html2canvas(cartelEl, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
+    const imgData = canvas.toDataURL('image/png');
 
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    pdf.addImage(imgData, 'JPEG', 0, 0, pageW, pageH);
+    pdf.addImage(imgData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
     pdf.save(`cartel_${v.matricula}.pdf`);
   } catch(e) {
     alert('Error generando PDF: ' + e.message);
@@ -2364,15 +2364,15 @@ async function enviarCartelEmail(vehiculoId, entrada) {
     const cartelEl = document.getElementById('cartel-preview');
     if (!cartelEl) { alert('No se encontró el cartel'); return; }
 
-    const canvas = await html2canvas(cartelEl, { scale: 2, useCORS: true, backgroundColor: '#ffffff' });
-    const imgData = canvas.toDataURL('image/jpeg', 0.92);
+    const canvas = await html2canvas(cartelEl, { scale: 4, useCORS: true, backgroundColor: '#ffffff' });
+    const imgData = canvas.toDataURL('image/png');
 
-    // Convertir a PDF con jsPDF (A4 landscape)
+    // Convertir a PDF con jsPDF (A3 landscape)
     const { jsPDF } = window.jspdf;
-    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a4' });
+    const pdf = new jsPDF({ orientation: 'landscape', unit: 'mm', format: 'a3' });
     const pageW = pdf.internal.pageSize.getWidth();
     const pageH = pdf.internal.pageSize.getHeight();
-    pdf.addImage(imgData, 'JPEG', 0, 0, pageW, pageH);
+    pdf.addImage(imgData, 'PNG', 0, 0, pageW, pageH, undefined, 'FAST');
     const pdfBase64 = pdf.output('datauristring').split(',')[1];
 
     if (btn) btn.textContent = ' Enviando...';
