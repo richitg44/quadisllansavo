@@ -31,7 +31,7 @@ const COLS_CLIENTES = [
 const COLS_STOCK = [
   "id","matricula","marca","modelo","version",
   "año","km","precio","color","combustible","cambio","etiqueta","foto","isNew",
-  "precioContado","procedencia","estado","tipo","fecMat","impFinanciar"
+  "precioContado","procedencia","estado","tipo","fecMat","impFinanciar","vsb"
 ];
 
 // ── ENTRY POINT ───────────────────────────────────────────────────
@@ -335,7 +335,7 @@ function stockToRow(v) {
     v.combustible||"", v.cambio||"", v.etiqueta||"", v.foto||"🚗",
     v.isNew ? "SI" : "",
     v.precioContado||0, v.procedencia||"",
-    v.estado||"", v.tipo||"", limpiarFecha(v.fecMat), v.impFinanciar||0
+    v.estado||"", v.tipo||"", limpiarFecha(v.fecMat), v.impFinanciar||0, v.vsb||""
   ];
 }
 
@@ -423,6 +423,7 @@ function getExternalStock(sheetId) {
         if (hl.match(/transmi/i)) colMap.cambio = i;
         if (hl === 'procedencia') colMap.procedencia = i;
         if (hl.includes('financ')) colMap.impFinanciar = i;
+        if (hl === 'vsb') colMap.vsb = i;
       });
 
       for (var r = 1; r < dataVO.length; r++) {
@@ -462,7 +463,8 @@ function getExternalStock(sheetId) {
           procedencia: colMap.procedencia !== undefined ? String(row[colMap.procedencia] || '').toUpperCase().trim() : 'VO',
           impFinanciar: colMap.impFinanciar !== undefined ? parseInt(String(row[colMap.impFinanciar] || '0').replace(/[^0-9]/g, '')) || 0 : 0,
           estado: estado,
-          tipo: 'VO'
+          tipo: 'VO',
+          vsb: colMap.vsb !== undefined ? String(row[colMap.vsb] || '').trim() : ''
         });
       }
     }
@@ -501,6 +503,7 @@ function getExternalStock(sheetId) {
         if (hl.match(/transmi/i)) colMapD.cambio = i;
         if (hl === 'procedencia') colMapD.procedencia = i;
         if (hl.includes('financ')) colMapD.impFinanciar = i;
+        if (hl === 'vsb') colMapD.vsb = i;
       });
 
       for (var r = headerRow + 1; r < dataDemo.length; r++) {
@@ -540,7 +543,8 @@ function getExternalStock(sheetId) {
           procedencia: colMapD.procedencia !== undefined ? String(row[colMapD.procedencia] || '').toUpperCase().trim() : 'DEMO',
           impFinanciar: colMapD.impFinanciar !== undefined ? parseInt(String(row[colMapD.impFinanciar] || '0').replace(/[^0-9]/g, '')) || 0 : 0,
           estado: estado,
-          tipo: 'Demo'
+          tipo: 'Demo',
+          vsb: colMapD.vsb !== undefined ? String(row[colMapD.vsb] || '').trim() : ''
         });
       }
     }
@@ -651,9 +655,25 @@ function syncFromEmail() {
         estado: v.estado,
         tipo: v.tipo,
         fecMat: v.fecMat,
-        impFinanciar: v.impFinanciar
+        impFinanciar: v.impFinanciar,
+        vsb: v.vsb || ''
       };
     });
+
+    // Buscar fotos reales en quadisllansa.es por VSB
+    try {
+      var fotoMap = scrapeQuadisFotos();
+      if (fotoMap) {
+        mapped.forEach(function(v) {
+          if (v.vsb && fotoMap[v.vsb]) {
+            v.foto = fotoMap[v.vsb];
+          }
+        });
+        Logger.log('Fotos asignadas: ' + mapped.filter(function(v){return v.foto && v.foto.indexOf('http')===0;}).length);
+      }
+    } catch(e) {
+      Logger.log('Error scraping fotos: ' + e.message);
+    }
 
     replaceStock(mapped);
 
@@ -668,6 +688,70 @@ function syncFromEmail() {
     Logger.log('Error sync email: ' + e.message);
     return { ok: false, error: e.message };
   }
+}
+
+// ── SCRAPING FOTOS DE QUADISLLANSA.ES ──────────────────────────────
+// Recorre las páginas del listado de vehículos, entra en cada ficha,
+// extrae el VSB y la URL de la primera foto.
+// Devuelve un mapa: { "24213": "https://quadis.s3.amazonaws.com/...", ... }
+
+function scrapeQuadisFotos() {
+  var fotoMap = {};
+  var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
+
+  // 1. Recorrer todas las páginas del listado
+  var allVehicleUrls = [];
+  for (var page = 1; page <= 15; page++) {
+    var listUrl = page === 1 ? baseUrl : baseUrl + 'page/' + page + '/';
+    try {
+      var res = UrlFetchApp.fetch(listUrl, { muteHttpExceptions: true, followRedirects: true });
+      if (res.getResponseCode() !== 200) break;
+      var html = res.getContentText();
+
+      // Extraer URLs de fichas individuales
+      var regex = /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g;
+      var match;
+      while ((match = regex.exec(html)) !== null) {
+        allVehicleUrls.push(match[1]);
+      }
+
+      // Si no hay link a página siguiente, salir
+      if (html.indexOf('/page/' + (page + 1) + '/') < 0) break;
+    } catch(e) {
+      Logger.log('Error listado página ' + page + ': ' + e.message);
+      break;
+    }
+  }
+
+  Logger.log('Vehículos encontrados en web: ' + allVehicleUrls.length);
+
+  // 2. Recorrer cada ficha para extraer VSB y foto
+  for (var i = 0; i < allVehicleUrls.length; i++) {
+    try {
+      var detRes = UrlFetchApp.fetch(allVehicleUrls[i], { muteHttpExceptions: true });
+      if (detRes.getResponseCode() !== 200) continue;
+      var detHtml = detRes.getContentText();
+
+      // Extraer VSB: buscar patrón U20_XXXXX o similar
+      var vsbMatch = detHtml.match(/U\d+_(\d+)/);
+      if (!vsbMatch) continue;
+      var vsb = vsbMatch[1];
+
+      // Extraer primera foto del vehículo
+      var fotoMatch = detHtml.match(/https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^"'\s]+e01jpg[^"'\s]*/);
+      if (fotoMatch) {
+        fotoMap[vsb] = fotoMatch[0];
+      }
+    } catch(e) {
+      // Continuar con el siguiente
+    }
+
+    // Pausa pequeña para no sobrecargar el servidor
+    if (i % 10 === 9) Utilities.sleep(1000);
+  }
+
+  Logger.log('VSB → Foto mapeados: ' + Object.keys(fotoMap).length);
+  return fotoMap;
 }
 
 // Sube un blob Excel a Google Drive y lo convierte a Google Sheets.

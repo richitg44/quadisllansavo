@@ -1182,7 +1182,8 @@ function parseStock(row) {
     cambio:row.cambio||'', etiqueta:row.etiqueta||'',
     foto:row.foto||'', isNew:row.isNew==='SI', estado:row.estado||'',
     procedencia:String(row.procedencia||'').toUpperCase(),
-    fecMat:parseFecha(row.fecMat).str||row.fecMat||'', tipo:row.tipo||'', impFinanciar:parseInt(String(row.impFinanciar||'0').replace(/[^0-9]/g,''))||0
+    fecMat:parseFecha(row.fecMat).str||row.fecMat||'', tipo:row.tipo||'', impFinanciar:parseInt(String(row.impFinanciar||'0').replace(/[^0-9]/g,''))||0,
+    vsb:row.vsb||''
   };
 }
 
@@ -1869,7 +1870,9 @@ function vcardHtml(v, showCartel){
   return '<div class="vcard '+(v.isNew?'isnew':'')+(esReservado?' reservado':'')+'">'
     +(esReservado?'<div class="rbadge">RESERVADO</div>':v.isNew?'<div class="nbadge">NUEVO</div>':'')
     +procHtml
-    +'<div class="vemoji" style="'+(v.procedencia?'margin-top:14px':'')+'">'+v.foto+'</div>'
+    +(v.foto && v.foto.indexOf('http')===0
+      ?'<div style="'+(v.procedencia?'margin-top:14px':'')+';border-radius:8px;overflow:hidden;margin-bottom:8px;aspect-ratio:4/3;background:var(--mid)"><img src="'+v.foto+'" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.innerHTML=\'🚗\'"></div>'
+      :'<div class="vemoji" style="'+(v.procedencia?'margin-top:14px':'')+'">'+v.foto+'</div>')
     +matHtml(v.matricula)
     +'<div class="vmodel">'+v.modelo+' '+etiqHtml(v.etiqueta)+'</div>'
     +(function(){
