@@ -1073,6 +1073,7 @@ let SHEETS_CONECTADO = false;
 let LAST_SYNC = null;
 let AUTO_SYNC_INTERVAL = 5 * 60 * 1000; // 5 minutos
 let _autoSyncTimer = null;
+let EXTERNAL_SHEET_ID = localStorage.getItem('nissan_vo_external_sheet') || '';
 
 // €€ DATA €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
 let STOCK = [{
@@ -1210,12 +1211,20 @@ async function cargarDatos() {
 async function refrescarDatosSilencioso() {
   if (!SCRIPT_URL || !SHEETS_CONECTADO) return;
   try {
+    // Si hay Sheet externo configurado, importar desde ahí
+    if (EXTERNAL_SHEET_ID) {
+      await importarDesdeSheetExterno({ silencioso: true });
+    }
+    // Siempre recargar clientes y ubicaciones desde nuestro Sheet
     const res = await apiCall('getAll');
-    STOCK = (res.stock||[]).filter(r=>r.id).map(parseStock);
     CLIENTES = (res.clientes||[]).filter(r=>r.id).map(parseCliente);
     if (res.ubicaciones) {
       UBICACIONES = {};
       res.ubicaciones.forEach(function(r){ if(r.id && r.zona) UBICACIONES[r.id]=r.zona; });
+    }
+    // Si NO hay sheet externo, también recargar stock desde nuestro sheet
+    if (!EXTERNAL_SHEET_ID) {
+      STOCK = (res.stock||[]).filter(r=>r.id).map(parseStock);
     }
     LAST_SYNC = new Date();
     buildAlertas();
@@ -1243,6 +1252,106 @@ async function refrescarManual() {
   await refrescarDatosSilencioso();
   if (btn) { btn.disabled = false; btn.textContent = 'Actualizar ahora'; }
   showSyncOk('Stock actualizado desde Google Sheets');
+}
+
+// Importar stock directamente desde el Google Sheet externo del jefe
+async function importarDesdeSheetExterno(opts) {
+  if (!SCRIPT_URL || !EXTERNAL_SHEET_ID) return false;
+  var silencioso = opts && opts.silencioso;
+  try {
+    if (!silencioso) showLoadingBanner('Leyendo stock del Sheet externo...');
+    var res = await apiCall('getExternalStock', { sheetId: EXTERNAL_SHEET_ID });
+    if (!res.stock || !res.stock.length) {
+      if (!silencioso) { hideLoadingBanner(); showSyncOk('Sin vehículos en el Sheet externo'); }
+      return false;
+    }
+    // Parsear los datos igual que parsearExcelNissan pero desde JSON
+    var incoming = res.stock.map(function(row) {
+      var comb = String(row.combustible||'').trim();
+      var mod = String(row.modelo||'').trim();
+      var ver = String(row.version||'').trim();
+      var combustible = normCombustible(comb, mod, ver);
+      var mat = String(row.matricula||'').toUpperCase().trim();
+      var precio = parseInt(String(row.precio||'0').replace(/[^0-9]/g,'')) || 0;
+      var precioBase = parseInt(String(row.precioBase||row.precio||'0').replace(/[^0-9]/g,'')) || 0;
+      var marca = String(row.marca||'Nissan').trim();
+      return {
+        id: (row.tipo === 'Demo' ? 'DEMO_' : 'VO_') + mat,
+        matricula: mat,
+        marca: marca === 'LOW COST' ? 'VO' : marca,
+        modelo: mod,
+        version: ver,
+        año: parseInt(row.año) || 0,
+        km: parseInt(String(row.km||'0').replace(/[^0-9]/g,'')) || 0,
+        precio: precio,
+        precioBase: precioBase,
+        fecMat: row.fecMat || '',
+        color: String(row.color||'').trim(),
+        combustible: combustible,
+        cambio: normCambio(row.cambio || ''),
+        etiqueta: inferEtiq(comb, row.etiqueta || ''),
+        foto: inferFoto(mod, comb),
+        procedencia: String(row.procedencia||'').toUpperCase() || (row.tipo === 'Demo' ? 'DEMO' : 'VO'),
+        impFinanciar: parseInt(String(row.impFinanciar||'0').replace(/[^0-9]/g,'')) || 0,
+        isNew: true,
+        estado: row.estado || '',
+        tipo: row.tipo || 'VO'
+      };
+    }).filter(function(v) { return v.precio > 0 && v.matricula.length >= 6; });
+
+    // Diff y actualización igual que doImportNissan
+    var diff = diffStock(incoming);
+    diffResult = diff;
+    localStorage.setItem('nissan_vo_diff', JSON.stringify({
+      nuevos:    diff.nuevos.map(function(v){return {matricula:v.matricula,modelo:v.modelo,precio:v.precio};}),
+      bajadas:   diff.bajadas.map(function(x){return {matricula:x.nuevo.matricula,modelo:x.nuevo.modelo,precio:x.nuevo.precio,precioAnterior:x.anterior.precio,diff:x.diff};}),
+      subidas:   diff.subidas.map(function(x){return {matricula:x.nuevo.matricula,modelo:x.nuevo.modelo,precio:x.nuevo.precio,precioAnterior:x.anterior.precio,diff:x.diff};}),
+      eliminados:diff.eliminados.map(function(v){return {matricula:v.matricula,modelo:v.modelo};}),
+      fecha: new Date().toISOString()
+    }));
+    // Actualizar stock existente
+    for (var i = 0; i < incoming.length; i++) {
+      var v = incoming[i];
+      var key = (v.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+      var idx = STOCK.findIndex(function(s){return (s.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'') === key;});
+      if (idx >= 0) {
+        STOCK[idx].precio = v.precio || STOCK[idx].precio;
+        STOCK[idx].precioBase = v.precioBase || STOCK[idx].precioBase;
+        STOCK[idx].impFinanciar = v.impFinanciar || 0;
+        STOCK[idx].fecMat = v.fecMat || STOCK[idx].fecMat;
+        STOCK[idx].estado = v.estado || STOCK[idx].estado;
+      }
+    }
+    // Eliminar los que ya no están
+    var keysNuevos = new Set(incoming.map(function(v){return (v.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'');}));
+    STOCK = STOCK.filter(function(v){
+      var k = (v.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+      return !k || keysNuevos.has(k);
+    });
+    // Añadir nuevos
+    STOCK = diff.nuevos.map(function(v){return Object.assign({},v,{isNew:true});}).concat(STOCK);
+
+    LAST_SYNC = new Date();
+    buildAlertas(); renderDashboard(); updateBadges();
+
+    // Sincronizar a nuestro Google Sheets propio
+    if (SCRIPT_URL) syncStockMasivo(STOCK);
+
+    if (!silencioso) {
+      hideLoadingBanner();
+      var msg = 'Stock actualizado desde Sheet externo';
+      if (diff.nuevos.length) msg += ' · ' + diff.nuevos.length + ' nuevos';
+      if (diff.eliminados.length) msg += ' · ' + diff.eliminados.length + ' eliminados';
+      if (diff.bajadas.length) msg += ' · ' + diff.bajadas.length + ' bajadas precio';
+      showSyncOk(msg);
+    }
+    console.log('External sync OK:', new Date().toLocaleTimeString('es-ES'), '- Nuevos:', diff.nuevos.length, 'Eliminados:', diff.eliminados.length);
+    return true;
+  } catch(e) {
+    if (!silencioso) hideLoadingBanner();
+    console.error('Error leyendo Sheet externo:', e);
+    return false;
+  }
 }
 
 async function syncCliente(c) {
@@ -1878,7 +1987,7 @@ function renderDashboard(){
     if(ALERTAS.length>3) alertasHtml+='<button class="btn sec w100 mt3" onclick="showTab(\'alertas\')">Ver todas las alertas ('+ALERTAS.length+') </button>';
   }
   document.getElementById('tab-dashboard').innerHTML=
-    '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">'      +'<div class="section-title" style="margin-bottom:0">DASHBOARD</div>'      +(SCRIPT_URL        ?'<button onclick="desconectarSheets()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px"><span style="color:var(--green);font-size:9px">&#9679;</span> Sheets conectado &middot; Desconectar</button>'        :'<button onclick="abrirModalConectar()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px"><span style="color:#ff3b30;font-size:9px">&#9679;</span> Sin conexi&oacute;n &middot; Conectar</button>'      )    +'</div>'    +'<div class="section-sub" style="display:flex;align-items:center;justify-content:space-between">'+new Date().toLocaleDateString('es-ES',{weekday:'long',year:'numeric',month:'long',day:'numeric'})
+    '<div style="display:flex;align-items:flex-start;justify-content:space-between;margin-bottom:4px">'      +'<div class="section-title" style="margin-bottom:0">DASHBOARD</div>'      +(SCRIPT_URL        ?'<div style="display:flex;gap:6px;align-items:center">'          +'<button onclick="abrirModalSheetExterno()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px"><span style="color:'+(EXTERNAL_SHEET_ID?'var(--green)':'var(--yellow)')+';font-size:9px">&#9679;</span> '+(EXTERNAL_SHEET_ID?'Sheet externo ON':'Sheet externo')+'</button>'          +'<button onclick="desconectarSheets()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px"><span style="color:var(--green);font-size:9px">&#9679;</span> Sheets conectado &middot; Desconectar</button>'          +'</div>'        :'<button onclick="abrirModalConectar()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 10px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif;display:flex;align-items:center;gap:5px"><span style="color:#ff3b30;font-size:9px">&#9679;</span> Sin conexi&oacute;n &middot; Conectar</button>'      )    +'</div>'    +'<div class="section-sub" style="display:flex;align-items:center;justify-content:space-between">'+new Date().toLocaleDateString('es-ES',{weekday:'long',year:'numeric',month:'long',day:'numeric'})
     +(SHEETS_CONECTADO && LAST_SYNC
       ?'<span style="display:flex;align-items:center;gap:8px;font-size:11px;color:var(--muted)">'
         +'<span>Sync: '+LAST_SYNC.toLocaleTimeString('es-ES',{hour:'2-digit',minute:'2-digit'})+'</span>'
@@ -3293,8 +3402,13 @@ async function init(){
     loadMsgs();
     updateBadges();
     if(ok){
+      // Si hay Sheet externo configurado, importar stock desde ahí
+      if(EXTERNAL_SHEET_ID){
+        showLoadingBanner('Leyendo stock del Sheet de tu jefe...');
+        await importarDesdeSheetExterno({ silencioso: false });
+      }
       iniciarAutoSync();
-      showSyncOk(' Conectado a Google Sheets');
+      showSyncOk(' Conectado a Google Sheets' + (EXTERNAL_SHEET_ID ? ' + Sheet externo' : ''));
     } else {
       hideLoadingBanner();
       // URL configurada pero fallo de red € mostrar igual el dashboard
@@ -3341,6 +3455,64 @@ function mostrarConfigSheet(){
         +'<button class="btn sec" onclick="usarSinSheets()" style="font-size:12px">Usar sin Google Sheets (datos de demo)</button>'
       +'</div>'
     +'</div>';
+}
+
+function abrirModalSheetExterno(){
+  document.getElementById('modal-root').innerHTML=
+    '<div class="mover" onclick="closeModal()">'
+      +'<div class="modal" style="max-width:520px" onclick="event.stopPropagation()">'
+        +'<div class="mtitle">CONECTAR SHEET EXTERNO (STOCK)</div>'
+        +'<div style="font-size:13px;color:var(--muted);margin-bottom:16px;line-height:1.5">'
+          +'Pega el <strong>ID del Google Sheet</strong> de tu jefe para que la app lea el stock directamente de ah&iacute;, sin tener que importar Excel manualmente.'
+          +'<br><br>El ID es la parte larga de la URL del Sheet:'
+          +'<br><code style="background:var(--mid);padding:3px 6px;border-radius:4px;font-size:11px;word-break:break-all">https://docs.google.com/spreadsheets/d/<strong style="color:var(--green)">ESTE_ES_EL_ID</strong>/edit</code>'
+          +'<br><br><strong style="color:var(--yellow)">Requisito:</strong> A&ntilde;ade la funci&oacute;n <code style="background:var(--mid);padding:2px 5px;border-radius:3px;font-size:11px">getExternalStock</code> a tu Apps Script (ver archivo <code style="background:var(--mid);padding:2px 5px;border-radius:3px;font-size:11px">apps-script-external-sheet.gs</code>) y haz una nueva implementaci&oacute;n.'
+        +'</div>'
+        +'<div class="frow">'
+          +'<label>ID del Google Sheet externo</label>'
+          +'<input id="external-sheet-input" placeholder="1BxiMVs0XRA5nFMdKvBdBZjgmUUqptlbs74OgVE2upms" value="'+(EXTERNAL_SHEET_ID||'')+'">'
+        +'</div>'
+        +(EXTERNAL_SHEET_ID
+          ?'<div style="margin-top:8px;font-size:12px;color:var(--green)">Actualmente conectado. El stock se actualiza cada 5 min desde este Sheet.</div>'
+          :'')
+        +'<div class="flex gap2 mt3">'
+          +'<button class="btn w100" onclick="guardarSheetExterno()">Conectar Sheet</button>'
+          +(EXTERNAL_SHEET_ID?'<button class="btn sec" onclick="desconectarSheetExterno()" style="color:var(--red)">Desconectar</button>':'')
+          +'<button class="btn sec" onclick="closeModal()">Cancelar</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+}
+
+function guardarSheetExterno(){
+  var id=(document.getElementById('external-sheet-input')||{}).value||'';
+  id=id.trim();
+  // Si el usuario pega la URL completa, extraer el ID
+  var urlMatch=id.match(/spreadsheets\/d\/([a-zA-Z0-9_-]+)/);
+  if(urlMatch) id=urlMatch[1];
+  if(!id||id.length<10){ alert('Pega un ID de Google Sheet válido (o la URL completa)'); return; }
+  EXTERNAL_SHEET_ID=id;
+  localStorage.setItem('nissan_vo_external_sheet',id);
+  closeModal();
+  showLoadingBanner('Conectando con Sheet externo...');
+  importarDesdeSheetExterno({ silencioso: false }).then(function(ok){
+    if(ok){
+      showSyncOk('Sheet externo conectado - stock actualizado');
+    } else {
+      alert('No se pudo leer el Sheet. Verifica que:\n1. El ID es correcto\n2. Tu Apps Script tiene acceso al Sheet\n3. El Sheet tiene hojas "Stock VO" o "Stock DEMO"');
+      EXTERNAL_SHEET_ID='';
+      localStorage.removeItem('nissan_vo_external_sheet');
+    }
+    renderDashboard();
+  });
+}
+
+function desconectarSheetExterno(){
+  EXTERNAL_SHEET_ID='';
+  localStorage.removeItem('nissan_vo_external_sheet');
+  closeModal();
+  renderDashboard();
+  showSyncOk('Sheet externo desconectado');
 }
 
 function desconectarSheets(){
