@@ -7,9 +7,10 @@
 const SHEET_ID = "1AVH8yxQ5GRAa3XLEoRYU7xielB8g-dZF4TqMd2aa4_A";
 
 // ── SHAREPOINT CONFIG ─────────────────────────────────────────────
-// Pega aquí la URL de descarga del Excel de tu jefe en SharePoint.
-// IMPORTANTE: El archivo debe estar compartido como "Cualquier persona con el enlace puede ver"
-const SHAREPOINT_DOWNLOAD_URL = 'https://sistemasquadis-my.sharepoint.com/:x:/r/personal/mginer_motorllansa_es/_layouts/15/Doc.aspx?sourcedoc=%7B96B940B5-231E-43DE-A47C-1958768B7172%7D&file=Libro4.xlsx&fromShare=true&action=download';
+// El Excel llega a tu Gmail como adjunto desde Power Automate.
+// Power Automate (cuenta empresa) envía el Excel a richitg44@gmail.com
+// con el asunto [STOCK-SYNC]. Apps Script lo lee automáticamente.
+const SYNC_EMAIL_SUBJECT = '[STOCK-SYNC]';
 
 const HOJAS = {
   clientes:    "Clientes",
@@ -66,7 +67,7 @@ function dispatch(action, body) {
     else if (action === "replaceLeadsCrm")    return replaceLeadsCrm(body.data);
     else if (action === "updateClienteMeta")  return updateClienteMeta(body.data);
     else if (action === "getExternalStock")   return getExternalStock(body.sheetId);
-    else if (action === "syncSharePoint")    return syncFromSharePoint();
+    else if (action === "syncEmail")          return syncFromEmail();
     else return { error: "Acción desconocida: " + action };
   } catch(err) { return { error: err.message }; }
 }
@@ -576,50 +577,59 @@ function formatHeader(sheet, numCols) {
   sheet.getRange(1,1,1,numCols).setBackground("#C3002F").setFontColor("white").setFontWeight("bold");
 }
 
-// ── SYNC DESDE SHAREPOINT (Excel del jefe) ────────────────────────
-// Descarga el Excel de SharePoint, lo convierte a Google Sheets,
-// lee las hojas "Stock VO" y "Stock DEMO", y actualiza tu Stock.
+// ── SYNC VÍA EMAIL (Power Automate → Gmail → Apps Script) ────────
+// Power Automate envía el Excel del jefe a richitg44@gmail.com
+// con asunto [STOCK-SYNC]. Esta función lo detecta y procesa.
 // SOLO LEE del archivo del jefe — nunca lo modifica.
 
-function syncFromSharePoint() {
-  if (!SHAREPOINT_DOWNLOAD_URL) return { ok: false, error: 'URL de SharePoint no configurada' };
-
+function syncFromEmail() {
   try {
-    // 1. Descargar Excel de SharePoint
-    var response = UrlFetchApp.fetch(SHAREPOINT_DOWNLOAD_URL, {
-      followRedirects: true,
-      muteHttpExceptions: true
-    });
+    // 1. Buscar emails con el asunto [STOCK-SYNC] no leídos
+    var threads = GmailApp.search('subject:' + SYNC_EMAIL_SUBJECT + ' is:unread', 0, 1);
 
-    if (response.getResponseCode() !== 200) {
-      Logger.log('Error descargando: HTTP ' + response.getResponseCode());
-      return { ok: false, error: 'HTTP ' + response.getResponseCode() };
+    if (threads.length === 0) {
+      Logger.log('No hay emails [STOCK-SYNC] nuevos');
+      return { ok: true, message: 'Sin emails nuevos' };
     }
 
-    // Si devuelve HTML = requiere login
-    var ct = response.getHeaders()['Content-Type'] || '';
-    if (ct.indexOf('text/html') >= 0) {
-      Logger.log('SharePoint devolvió HTML — requiere autenticación');
-      return { ok: false, error: 'El archivo requiere login. Compártelo como "Cualquier persona con el enlace puede ver".' };
+    var messages = threads[0].getMessages();
+    var latest = messages[messages.length - 1];
+    var attachments = latest.getAttachments();
+
+    // 2. Buscar adjunto Excel
+    var excelBlob = null;
+    for (var i = 0; i < attachments.length; i++) {
+      var name = attachments[i].getName().toLowerCase();
+      if (name.indexOf('.xlsx') >= 0 || name.indexOf('.xls') >= 0) {
+        excelBlob = attachments[i].copyBlob();
+        break;
+      }
     }
 
-    var blob = response.getBlob().setName('stock_jefe.xlsx');
+    if (!excelBlob) {
+      Logger.log('Email encontrado pero sin adjunto Excel');
+      threads[0].markRead();
+      return { ok: false, error: 'Email sin adjunto Excel' };
+    }
 
-    // 2. Subir a Drive y convertir a Google Sheets (temporal)
-    var tempId = uploadAndConvertExcel(blob);
+    excelBlob.setName('stock_sync.xlsx');
 
-    // 3. Leer stock con la función existente
+    // 3. Subir a Drive y convertir a Google Sheets (temporal)
+    var tempId = uploadAndConvertExcel(excelBlob);
+
+    // 4. Leer stock con la función existente
     var data = getExternalStock(tempId);
 
-    // 4. Borrar archivo temporal
+    // 5. Borrar archivo temporal
     DriveApp.getFileById(tempId).setTrashed(true);
 
     if (!data.ok || !data.stock || data.stock.length === 0) {
       Logger.log('No se encontraron vehículos en el Excel');
+      threads[0].markRead();
       return { ok: false, error: 'No se encontraron vehículos en el Excel' };
     }
 
-    // 5. Mapear al formato de Stock y reemplazar
+    // 6. Mapear al formato de Stock y reemplazar
     var mapped = data.stock.map(function(v) {
       return {
         id: (v.tipo === 'Demo' ? 'DEMO_' : 'VO_') + v.matricula,
@@ -646,11 +656,16 @@ function syncFromSharePoint() {
     });
 
     replaceStock(mapped);
-    Logger.log('Sync SharePoint OK: ' + mapped.length + ' vehículos importados');
+
+    // 7. Marcar email como leído y archivar
+    threads[0].markRead();
+    threads[0].moveToArchive();
+
+    Logger.log('Sync Email OK: ' + mapped.length + ' vehículos importados desde email de ' + latest.getFrom());
     return { ok: true, count: mapped.length };
 
   } catch(e) {
-    Logger.log('Error sync SharePoint: ' + e.message);
+    Logger.log('Error sync email: ' + e.message);
     return { ok: false, error: e.message };
   }
 }
@@ -684,31 +699,27 @@ function uploadAndConvertExcel(blob) {
 
 // Ejecuta esto UNA VEZ para activar el sync automático cada 10 minutos.
 // Selecciona esta función en el editor > Ejecutar
-function setupSharePointSync() {
+function setupEmailSync() {
   // Eliminar triggers anteriores
   ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'syncFromSharePoint') ScriptApp.deleteTrigger(t);
+    if (t.getHandlerFunction() === 'syncFromEmail') ScriptApp.deleteTrigger(t);
   });
 
   // Crear trigger cada 10 minutos
-  ScriptApp.newTrigger('syncFromSharePoint')
+  ScriptApp.newTrigger('syncFromEmail')
     .timeBased()
     .everyMinutes(10)
     .create();
 
-  Logger.log('Trigger configurado: sync desde SharePoint cada 10 minutos');
-
-  // Ejecutar ahora para verificar que funciona
-  var result = syncFromSharePoint();
-  Logger.log('Primera ejecución: ' + JSON.stringify(result));
+  Logger.log('Trigger configurado: revisar Gmail cada 10 minutos para [STOCK-SYNC]');
 }
 
 // Ejecuta esto si quieres PARAR el sync automático
-function stopSharePointSync() {
+function stopEmailSync() {
   ScriptApp.getProjectTriggers().forEach(function(t) {
-    if (t.getHandlerFunction() === 'syncFromSharePoint') ScriptApp.deleteTrigger(t);
+    if (t.getHandlerFunction() === 'syncFromEmail') ScriptApp.deleteTrigger(t);
   });
-  Logger.log('Sync desde SharePoint detenido');
+  Logger.log('Sync por email detenido');
 }
 
 // ── SETUP ─────────────────────────────────────────────────────────
