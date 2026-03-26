@@ -738,18 +738,24 @@ function scrapeQuadisFotos() {
       var vsb = vsbMatch[1];
 
       // Extraer TODAS las fotos del vehículo
+      // Extraer WebID de la URL para filtrar solo fotos de este coche
+      var webIdMatch = allVehicleUrls[i].match(/\/(\d+)\/?$/);
+      var webId = webIdMatch ? webIdMatch[1] : '';
       var allFotos = detHtml.match(/https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^"'\s]+/g);
-      if (allFotos) {
+      if (allFotos && webId) {
         var seen = {};
         var uniqueFotos = [];
         for (var f = 0; f < allFotos.length; f++) {
           var url = allFotos[f];
-          if (!seen[url]) {
+          // Solo fotos que contengan el WebID de este vehículo
+          if (url.indexOf('_' + webId + '/') >= 0 && !seen[url]) {
             seen[url] = true;
             uniqueFotos.push(url);
           }
         }
-        fotoMap[vsb] = uniqueFotos.join('|');
+        if (uniqueFotos.length > 0) {
+          fotoMap[vsb] = uniqueFotos.join('|');
+        }
       }
     } catch(e) {
       // Continuar con el siguiente

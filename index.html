@@ -1859,6 +1859,11 @@ function renderTab(name){
 }
 
 // €€ VCARD €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
+function fotoEmoji(foto){
+  if(!foto) return '';
+  var f=String(foto).split('|')[0];
+  return f.indexOf('http')===0 ? '' : f;
+}
 function vcardHtml(v, showCartel){
   const interesados=ALERTAS.filter(function(a){ return a.v.id===v.id; }).length;
   const pb=parseInt(v.precioBase)||0, pr=parseInt(v.precio)||0;
@@ -1916,7 +1921,7 @@ function renderDashboard(){
         +'<div class="flex ac gap2 mb3">'
           +'<div class="ascore">'+a.m.score+'%</div>'
           +'<div>'
-            +'<div class="acar">'+a.v.foto+' Nissan '+a.v.modelo+' · '+a.v.precio.toLocaleString()+'€</div>'
+            +'<div class="acar">'+fotoEmoji(a.v.foto)+' Nissan '+a.v.modelo+' · '+a.v.precio.toLocaleString()+'€</div>'
             +'<div class="acli"> '+a.c.nombre+' · '+a.c.telefono+'</div>'
           +'</div>'
         +'</div>'
@@ -2523,7 +2528,7 @@ function renderAlertas(){
       const vid = safeStr(a.v&&a.v.id);
       const cid = safeStr(a.c&&a.c.id);
       const aid = vid+'-'+cid;
-      const foto = safeStr((a.v&&a.v.foto)||'');
+      const foto = fotoEmoji((a.v&&a.v.foto)||'');
       const modelo = safeStr((a.v&&a.v.modelo)||'');
       const version = safeStr((a.v&&a.v.version)||'');
       const anio = safeStr((a.v&&a.v.año)||'');
@@ -2679,7 +2684,7 @@ function openCliente(id){
       return '<div style="padding:9px 0;border-bottom:1px solid var(--border)">'
         +'<div class="flex ac jb">'
           +'<div>'
-            +'<div style="font-weight:600;font-size:14px">'+a.v.foto+' Nissan '+a.v.modelo+' '+a.v.version+(a.v.matricula?' <span style="font-family:monospace;font-size:11px;color:var(--muted)">['+a.v.matricula+']</span>':'')+'</div>'
+            +'<div style="font-weight:600;font-size:14px">'+fotoEmoji(a.v.foto)+' Nissan '+a.v.modelo+' '+a.v.version+(a.v.matricula?' <span style="font-family:monospace;font-size:11px;color:var(--muted)">['+a.v.matricula+']</span>':'')+'</div>'
             +'<div style="font-size:12px;color:var(--muted)">'+a.v.año+' · '+a.v.km.toLocaleString()+' km · '+a.v.precio.toLocaleString()+'€</div>'
           +'</div>'
           +'<div class="mpill '+mcClass(a.m.score)+'">'+a.m.score+'%</div>'
