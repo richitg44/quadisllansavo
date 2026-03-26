@@ -1058,6 +1058,14 @@ document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {
       <option value="visita">🏢 Visita al concesionario</option>
       <option value="email">✉️ Email</option>
     </select>
+    <label>Repetir</label>
+    <select id="lf-recurrencia">
+      <option value="">Sin repetición</option>
+      <option value="3">Cada 3 días</option>
+      <option value="7">Cada semana</option>
+      <option value="14">Cada 2 semanas</option>
+      <option value="30">Cada mes</option>
+    </select>
     <label>Notas</label>
     <textarea id="lf-notas" placeholder="Observaciones..."></textarea>
     <div class="modal-footer">
@@ -1945,6 +1953,7 @@ function renderDashboard(){
       +'<div class="stat-card" onclick="showTab(\'stock\')" onmouseover="this.style.boxShadow=\'0 6px 24px rgba(0,0,0,.13)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.boxShadow=\'\';this.style.transform=\'\'" style="cursor:pointer;transition:box-shadow .18s,transform .18s"><div class="stat-icon si-green"><svg width="20" height="20" viewBox="0 0 24 24" fill="#22c55e"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg></div><div><div class="stat-value">'+STOCK.length+'</div><div class="stat-label">Vehículos en stock</div></div></div>'
       +'<div class="stat-card" onclick="showTab(\'alertas\')" onmouseover="this.style.boxShadow=\'0 6px 24px rgba(0,0,0,.13)\';this.style.transform=\'translateY(-2px)\'" onmouseout="this.style.boxShadow=\'\';this.style.transform=\'\'" style="cursor:pointer;transition:box-shadow .18s,transform .18s"><div class="stat-icon si-yellow"><svg width="20" height="20" viewBox="0 0 24 24" fill="#f59e0b"><path d="M13 2L3 14h9l-1 8 10-12h-9l1-8z"/></svg></div><div><div class="stat-value">'+ALERTAS.filter(function(a){return a.m.score>=75;}).length+'</div><div class="stat-label">Matches prioritarios</div></div></div>'
     +'</div>'
+    +'<div class="card"><div class="card-title">📋 QUÉ HACER HOY</div>'+renderQueHacerHtml()+'</div>'
     +'<div class="card"><div class="card-title"> MEJORES MATCHES HOY</div>'+alertasHtml+'</div>'
     +'<div class="card">'
     +'<div class="card-title"> STOCK RECIENTE <div class="flex gap2"><button class="btn excel" onclick="openExcelModal()" style="font-size:12px;padding:7px 13px"> Importar Excel</button><button class="btn" onclick="openAddStock()" style="font-size:12px;padding:7px 13px">+ Manual</button></div></div>'
@@ -2047,10 +2056,15 @@ function renderClientes(){
     const ca=ALERTAS.filter(function(a){return a.c.id===c.id;});
     const best=ca.length?Math.max.apply(null,ca.map(function(a){return a.m.score;})):0;
     const fechaHtml=c.fechaCreacion?'<div style="font-size:11px;color:var(--muted);margin-top:2px"> Alta: '+new Date(c.fechaCreacion).toLocaleDateString('es-ES',{day:'2-digit',month:'short',year:'numeric'})+'</div>':'';
+    var cKey=clienteKeyFromCliente(c);
+    var dias=diasSinContacto(cKey);
+    var diasBadge='';
+    if(dias>=7) diasBadge='<span style="font-size:10px;font-weight:700;background:rgba(255,59,48,.15);color:#ff3b30;padding:1px 6px;border-radius:8px;margin-left:6px">'+dias+'d</span>';
+    else if(dias>=3) diasBadge='<span style="font-size:10px;font-weight:700;background:rgba(245,158,11,.15);color:var(--yellow);padding:1px 6px;border-radius:8px;margin-left:6px">'+dias+'d</span>';
     return '<div class="clirow" onclick="openCliente(\''+c.id+'\')">'
       +'<div class="avatar">'+c.nombre[0]+'</div>'
       +'<div style="flex:1">'
-        +'<div class="cname">'+c.nombre+'</div>'
+        +'<div class="cname">'+c.nombre+diasBadge+'</div>'
         +'<div class="csub"> '+c.telefono+' ·  '+c.pref.pMin.toLocaleString()+'€'+c.pref.pMax.toLocaleString()+' ·  '+(c.pref.modelos.join(', ')||'Cualquiera')+'</div>'
         +fechaHtml
       +'</div>'
@@ -2712,6 +2726,22 @@ function openCliente(id){
         +'<div class="frow"><label>Combustible</label><div>'+c.pref.comb.map(function(x){return '<span class="chip on" style="cursor:default">'+x+'</span>';}).join('')+'</div></div>'
         +(c.pref.notas?'<div class="frow"><label>Notas</label><div style="background:var(--mid);padding:9px;border-radius:8px;font-size:13px">'+c.pref.notas+'</div></div>':'')
         +'<div class="divider"></div>'
+        +'<div style="margin-bottom:14px">'
+          +'<label>Registrar contacto</label>'
+          +'<div style="display:flex;gap:6px;margin-top:6px">'
+            +'<button onclick="closeModal();registrarContacto(\''+c.id+'\',\'llamada\')" style="flex:1;background:rgba(59,130,246,.1);border:1px solid rgba(59,130,246,.3);color:#3b82f6;padding:8px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;font-family:DM Sans,sans-serif">📞 Llamada</button>'
+            +'<button onclick="closeModal();registrarContacto(\''+c.id+'\',\'whatsapp\')" style="flex:1;background:rgba(34,197,94,.1);border:1px solid rgba(34,197,94,.3);color:#22c55e;padding:8px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;font-family:DM Sans,sans-serif">💬 WhatsApp</button>'
+            +'<button onclick="closeModal();registrarContacto(\''+c.id+'\',\'visita\')" style="flex:1;background:rgba(245,158,11,.1);border:1px solid rgba(245,158,11,.3);color:#f59e0b;padding:8px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;font-family:DM Sans,sans-serif">🏪 Visita</button>'
+            +'<button onclick="closeModal();registrarContacto(\''+c.id+'\',\'email\')" style="flex:1;background:rgba(168,85,247,.1);border:1px solid rgba(168,85,247,.3);color:#a855f7;padding:8px;border-radius:8px;cursor:pointer;font-size:12px;font-weight:600;font-family:DM Sans,sans-serif">📧 Email</button>'
+          +'</div>'
+          +(function(){
+            var key=clienteKeyFromCliente(c);
+            var dias=diasSinContacto(key);
+            var ult=getUltimoContacto(key);
+            if(dias<999 && ult) return '<div style="font-size:11px;color:'+(dias>=5?'#ff3b30':dias>=3?'var(--yellow)':'var(--green)')+';margin-top:6px">Último contacto: '+ult+' (hace '+dias+' días)</div>';
+            return '<div style="font-size:11px;color:var(--muted);margin-top:6px">Sin contactos registrados</div>';
+          })()
+        +'</div>'
         +'<label>Vehículos compatibles en stock</label>'
         +matchHtml
         +'<div class="divider"></div>'
@@ -3671,6 +3701,9 @@ function saveDescartados() {
 function clienteKey(lead) {
   return lead?.crmId || lead?.nombre || '';
 }
+function clienteKeyFromCliente(c) {
+  return c?.crmId || c?.nombre || c?.id || '';
+}
 function addNotaCliente(key, texto, resultado, accion) {
   if (!key || !texto) return;
   if (!notasCliente[key]) notasCliente[key] = [];
@@ -3691,6 +3724,152 @@ function getMisNotasTexto(key) {
   return notas.map(n => `• [${n.fecha}${n.resultado ? ' · ' + n.resultado : ''}] ${n.texto}`).join('\n');
 }
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
+
+// ── Último contacto y días sin contactar ─────────────────────────
+function getUltimoContacto(key) {
+  var notas = getNotasCliente(key);
+  if (!notas.length) return null;
+  var fechas = notas.map(function(n){ return n.fecha; }).filter(Boolean).sort();
+  return fechas.length ? fechas[fechas.length - 1] : null;
+}
+function diasSinContacto(key) {
+  var ult = getUltimoContacto(key);
+  if (!ult) return 999;
+  var parts = ult.split('-');
+  var d = new Date(parseInt(parts[0]), parseInt(parts[1])-1, parseInt(parts[2]));
+  return Math.floor((TODAY - d) / 86400000);
+}
+
+// ── Registro rápido de contacto ──────────────────────────────────
+function registrarContacto(clienteId, tipo) {
+  var c = CLIENTES.find(function(x){ return x.id === clienteId; });
+  if (!c) { var lead = leads.find(function(l){ return l.id === clienteId; }); if (lead) c = lead; }
+  if (!c) return;
+  var key = c.crmId || c.nombre || c.id || '';
+  var tipoLabel = {llamada:'Llamada realizada',whatsapp:'WhatsApp enviado',visita:'Visita en tienda',email:'Email enviado'};
+  var resultadoModal =
+    '<div class="mover" onclick="closeModal()">'
+      +'<div class="modal" style="max-width:420px" onclick="event.stopPropagation()">'
+        +'<div class="mtitle">'+(tipo==='llamada'?'📞':'')+(tipo==='whatsapp'?'💬':'')+(tipo==='visita'?'🏪':'')+(tipo==='email'?'📧':'')
+        +' '+(tipoLabel[tipo]||tipo)+'</div>'
+        +'<div style="font-size:13px;color:var(--muted);margin-bottom:12px">'+c.nombre+'</div>'
+        +'<div class="frow"><label>Resultado</label>'
+          +'<select id="rc-resultado" style="margin-bottom:8px">'
+            +'<option value="Contactado">Contactado</option>'
+            +'<option value="No contesta">No contesta</option>'
+            +'<option value="Interesado">Interesado</option>'
+            +'<option value="Descartado">No interesado</option>'
+            +'<option value="Volver a llamar">Volver a llamar</option>'
+          +'</select>'
+        +'</div>'
+        +'<div class="frow"><label>Nota rápida (opcional)</label>'
+          +'<input id="rc-nota" placeholder="Ej: Le interesa el Qashqai gris">'
+        +'</div>'
+        +'<div class="flex gap2 mt3">'
+          +'<button class="btn w100" onclick="guardarContactoRapido(\''+key.replace(/'/g,"\\'")+'\',\''+tipo+'\',\''+clienteId+'\')">Guardar</button>'
+          +'<button class="btn sec" onclick="closeModal()">Cancelar</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+  document.getElementById('modal-root').innerHTML = resultadoModal;
+}
+function guardarContactoRapido(key, tipo, clienteId) {
+  var resultado = (document.getElementById('rc-resultado')||{}).value || 'Contactado';
+  var nota = (document.getElementById('rc-nota')||{}).value || '';
+  var tipoLabel = {llamada:'Llamada',whatsapp:'WhatsApp',visita:'Visita',email:'Email'};
+  var texto = (tipoLabel[tipo]||tipo) + (nota ? ': ' + nota : '');
+  addNotaCliente(key, texto, resultado, tipo);
+  closeModal();
+  // Si resultado es "Volver a llamar", sugerir crear seguimiento
+  if (resultado === 'Volver a llamar') {
+    setTimeout(function(){
+      if (confirm('¿Quieres programar un seguimiento para ' + (leads.find(function(l){return l.id===clienteId;})||{}).nombre + '?')) {
+        var lead = leads.find(function(l){return l.id===clienteId;});
+        if (lead) openFollowupForLead(clienteId);
+      }
+    }, 300);
+  }
+  showSyncOk('Contacto registrado');
+  if (typeof renderTab === 'function') renderTab(currentTab);
+}
+
+// ── Panel "Qué hacer hoy" ────────────────────────────────────────
+function buildQueHacerHoy() {
+  var hoy = dateToStr(TODAY);
+  var items = [];
+
+  // 1. Seguimientos vencidos (no de hoy, anteriores)
+  followups.forEach(function(f) {
+    if (f.fecha < hoy) {
+      items.push({ prioridad: 1, tipo: 'vencido', emoji: '🔴', label: 'VENCIDO', cliente: f.cliente, detalle: f.notas || '', tipoContacto: f.tipo, leadId: f.leadId });
+    }
+  });
+
+  // 2. Seguimientos de hoy
+  followups.forEach(function(f) {
+    if (f.fecha === hoy) {
+      items.push({ prioridad: 2, tipo: 'hoy', emoji: '🟡', label: 'HOY', cliente: f.cliente, detalle: f.notas || '', tipoContacto: f.tipo, leadId: f.leadId });
+    }
+  });
+
+  // 3. Clientes activos sin contactar en +5 días
+  CLIENTES.filter(function(c){ return c.estado === 'Activo'; }).forEach(function(c) {
+    var key = clienteKeyFromCliente(c);
+    var dias = diasSinContacto(key);
+    if (dias >= 5 && dias < 999) {
+      items.push({ prioridad: 3, tipo: 'inactivo', emoji: '🟠', label: dias + ' días sin contacto', cliente: c.nombre, detalle: '', clienteId: c.id });
+    } else if (dias >= 999) {
+      // Nunca contactado
+      items.push({ prioridad: 3, tipo: 'sincontacto', emoji: '⚪', label: 'Nunca contactado', cliente: c.nombre, detalle: '', clienteId: c.id });
+    }
+  });
+
+  // Ordenar por prioridad
+  items.sort(function(a, b) { return a.prioridad - b.prioridad; });
+  return items;
+}
+
+function renderQueHacerHtml() {
+  var items = buildQueHacerHoy();
+  if (!items.length) return '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Todo al día. Sin tareas pendientes.</div>';
+
+  var vencidos = items.filter(function(i){ return i.tipo === 'vencido'; }).length;
+  var hoyCount = items.filter(function(i){ return i.tipo === 'hoy'; }).length;
+  var inactivos = items.filter(function(i){ return i.tipo === 'inactivo' || i.tipo === 'sincontacto'; }).length;
+
+  var html = '<div style="display:flex;gap:8px;margin-bottom:12px;flex-wrap:wrap">';
+  if (vencidos) html += '<span style="font-size:11px;font-weight:700;background:rgba(255,59,48,.15);color:#ff3b30;padding:3px 8px;border-radius:10px">'+vencidos+' vencidos</span>';
+  if (hoyCount) html += '<span style="font-size:11px;font-weight:700;background:rgba(245,158,11,.15);color:var(--yellow);padding:3px 8px;border-radius:10px">'+hoyCount+' hoy</span>';
+  if (inactivos) html += '<span style="font-size:11px;font-weight:700;background:rgba(156,163,175,.15);color:var(--muted);padding:3px 8px;border-radius:10px">'+inactivos+' sin contacto</span>';
+  html += '</div>';
+
+  html += items.slice(0, 8).map(function(item) {
+    var contactBtns = '<div style="display:flex;gap:4px">'
+      +(item.clienteId
+        ?'<button onclick="event.stopPropagation();registrarContacto(\''+item.clienteId+'\',\'llamada\')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 6px;cursor:pointer;font-size:11px" title="Llamar">📞</button>'
+         +'<button onclick="event.stopPropagation();registrarContacto(\''+item.clienteId+'\',\'whatsapp\')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 6px;cursor:pointer;font-size:11px" title="WhatsApp">💬</button>'
+        :'')
+      +(item.leadId
+        ?'<button onclick="event.stopPropagation();registrarContacto(\''+item.leadId+'\',\'llamada\')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 6px;cursor:pointer;font-size:11px" title="Llamar">📞</button>'
+         +'<button onclick="event.stopPropagation();registrarContacto(\''+item.leadId+'\',\'whatsapp\')" style="background:none;border:1px solid var(--border);border-radius:6px;padding:3px 6px;cursor:pointer;font-size:11px" title="WhatsApp">💬</button>'
+        :'')
+      +'</div>';
+    return '<div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">'
+      +'<div style="font-size:14px;flex-shrink:0">'+item.emoji+'</div>'
+      +'<div style="flex:1;min-width:0">'
+        +'<div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+item.cliente+'</div>'
+        +'<div style="font-size:11px;color:var(--muted);white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'
+          +'<span style="font-weight:700;color:'+(item.tipo==='vencido'?'#ff3b30':item.tipo==='hoy'?'var(--yellow)':'var(--muted)')+'">'+item.label+'</span>'
+          +(item.detalle ? ' · '+item.detalle : '')
+        +'</div>'
+      +'</div>'
+      +contactBtns
+    +'</div>';
+  }).join('');
+
+  if (items.length > 8) html += '<div style="text-align:center;padding:8px;font-size:12px;color:var(--muted)">y '+(items.length-8)+' más...</div>';
+  return html;
+}
 
 const CAMPO_LABELS = {
   nombre:   'Nombre del cliente',
@@ -4229,6 +4408,42 @@ function saveFollowups() {
   localStorage.setItem('mf_followups', JSON.stringify(followups));
 }
 
+// Procesar seguimientos recurrentes: si la fecha ya pasó, crear el siguiente
+function procesarRecurrentes() {
+  var hoy = dateToStr(TODAY);
+  var nuevos = [];
+  followups.forEach(function(f) {
+    if (f.recurrencia && parseInt(f.recurrencia) > 0 && f.fecha < hoy) {
+      // Crear el siguiente solo si no existe ya uno futuro para el mismo cliente+tipo
+      var yaExiste = followups.some(function(f2) {
+        return f2.cliente === f.cliente && f2.tipo === f.tipo && f2.fecha >= hoy && f2.id !== f.id;
+      }) || nuevos.some(function(f2) {
+        return f2.cliente === f.cliente && f2.tipo === f.tipo;
+      });
+      if (!yaExiste) {
+        var dias = parseInt(f.recurrencia);
+        var nueva = new Date(TODAY.getTime() + dias * 86400000);
+        // Saltar domingos
+        if (nueva.getDay() === 0) nueva.setDate(nueva.getDate() + 1);
+        nuevos.push({
+          id: Date.now() + Math.random(),
+          leadId: f.leadId,
+          cliente: f.cliente,
+          fecha: dateToStr(nueva),
+          tipo: f.tipo,
+          notas: f.notas,
+          recurrencia: f.recurrencia
+        });
+      }
+    }
+  });
+  if (nuevos.length > 0) {
+    followups = followups.concat(nuevos);
+    saveFollowups();
+    console.log('Recurrentes creados:', nuevos.length);
+  }
+}
+
 function openFollowupForLead(id) {
   const lead = leads.find(l => l.id === id);
   pendingLeadForFollowup = id;
@@ -4242,6 +4457,7 @@ $g('save-lf').onclick = () => {
   const fecha = $g('lf-fecha').value;
   if (!fecha) return alert('Selecciona una fecha.');
   const lead = leads.find(l => l.id === pendingLeadForFollowup);
+  var recurrencia = $g('lf-recurrencia') ? $g('lf-recurrencia').value : '';
   followups.push({
     id:      Date.now(),
     leadId:  pendingLeadForFollowup,
@@ -4249,6 +4465,7 @@ $g('save-lf').onclick = () => {
     fecha,
     tipo:    $g('lf-tipo').value,
     notas:   $g('lf-notas').value,
+    recurrencia: recurrencia || '',
   });
   saveFollowups();
   closeModal('modal-lead-followup');
@@ -4938,6 +5155,7 @@ $g('btn-briefing-empezar').onclick = () => {
 
 // Lanzar briefing cuando el DOM esté listo y haya leads
 function tryBriefing() {
+  procesarRecurrentes();
   if (leads.length > 0) checkBriefing();
 }
 
