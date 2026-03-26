@@ -737,10 +737,19 @@ function scrapeQuadisFotos() {
       if (!vsbMatch) continue;
       var vsb = vsbMatch[1];
 
-      // Extraer primera foto del vehículo
-      var fotoMatch = detHtml.match(/https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^"'\s]+e01jpg[^"'\s]*/);
-      if (fotoMatch) {
-        fotoMap[vsb] = fotoMatch[0];
+      // Extraer TODAS las fotos del vehículo
+      var allFotos = detHtml.match(/https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^"'\s]+/g);
+      if (allFotos) {
+        var seen = {};
+        var uniqueFotos = [];
+        for (var f = 0; f < allFotos.length; f++) {
+          var url = allFotos[f];
+          if (!seen[url]) {
+            seen[url] = true;
+            uniqueFotos.push(url);
+          }
+        }
+        fotoMap[vsb] = uniqueFotos.join('|');
       }
     } catch(e) {
       // Continuar con el siguiente

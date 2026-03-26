@@ -1870,9 +1870,17 @@ function vcardHtml(v, showCartel){
   return '<div class="vcard '+(v.isNew?'isnew':'')+(esReservado?' reservado':'')+'">'
     +(esReservado?'<div class="rbadge">RESERVADO</div>':v.isNew?'<div class="nbadge">NUEVO</div>':'')
     +procHtml
-    +(v.foto && v.foto.indexOf('http')===0
-      ?'<div style="'+(v.procedencia?'margin-top:14px':'')+';border-radius:8px;overflow:hidden;margin-bottom:8px;aspect-ratio:4/3;background:var(--mid)"><img src="'+v.foto+'" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.innerHTML=\'🚗\'"></div>'
-      :'<div class="vemoji" style="'+(v.procedencia?'margin-top:14px':'')+'">'+v.foto+'</div>')
+    +(function(){
+      var fotos = (v.foto||'').split('|').filter(function(f){return f.indexOf('http')===0;});
+      if(fotos.length > 0){
+        var numFotos = fotos.length;
+        return '<div onclick="abrirGaleria(\''+v.id+'\')" style="cursor:pointer;'+(v.procedencia?'margin-top:14px':'')+';border-radius:8px;overflow:hidden;margin-bottom:8px;aspect-ratio:4/3;background:var(--mid);position:relative">'
+          +'<img src="'+fotos[0]+'" style="width:100%;height:100%;object-fit:cover" loading="lazy" onerror="this.parentElement.innerHTML=\'🚗\'">'
+          +(numFotos>1?'<div style="position:absolute;bottom:6px;right:6px;background:rgba(0,0,0,.65);color:white;font-size:10px;font-weight:700;padding:2px 7px;border-radius:10px">'+numFotos+' fotos</div>':'')
+        +'</div>';
+      }
+      return '<div class="vemoji" style="'+(v.procedencia?'margin-top:14px':'')+'">'+v.foto+'</div>';
+    })()
     +matHtml(v.matricula)
     +'<div class="vmodel">'+v.modelo+' '+etiqHtml(v.etiqueta)+'</div>'
     +(function(){
@@ -2626,6 +2634,40 @@ async function loadMsgs(){
 
 // €€ MODALES €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
 function closeModal(){ document.getElementById('modal-root').innerHTML=''; }
+
+var _galeriaFotos=[], _galeriaIdx=0;
+function abrirGaleria(vehiculoId){
+  var v=STOCK.find(function(s){return s.id===vehiculoId;});
+  if(!v) return;
+  _galeriaFotos=(v.foto||'').split('|').filter(function(f){return f.indexOf('http')===0;});
+  if(!_galeriaFotos.length) return;
+  _galeriaIdx=0;
+  renderGaleria(v);
+}
+function renderGaleria(v){
+  var total=_galeriaFotos.length;
+  var titulo=v?(v.marca+' '+v.modelo+' · '+v.matricula):'';
+  document.getElementById('modal-root').innerHTML=
+    '<div class="mover" onclick="closeModal()" style="background:rgba(0,0,0,.85)">'
+      +'<div onclick="event.stopPropagation()" style="max-width:900px;width:95%;margin:auto;position:relative;display:flex;flex-direction:column;align-items:center;justify-content:center;min-height:100vh;padding:20px 0">'
+        +'<div style="color:white;font-size:14px;font-weight:600;margin-bottom:12px;text-align:center">'+titulo+'</div>'
+        +'<div style="position:relative;width:100%;aspect-ratio:4/3;background:#111;border-radius:10px;overflow:hidden">'
+          +'<img src="'+_galeriaFotos[_galeriaIdx]+'" style="width:100%;height:100%;object-fit:contain">'
+          +(total>1?'<button onclick="event.stopPropagation();galeriaNav(-1)" style="position:absolute;left:8px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.6);color:white;border:none;width:40px;height:40px;border-radius:50%;font-size:20px;cursor:pointer;font-family:sans-serif">&lt;</button>':'')
+          +(total>1?'<button onclick="event.stopPropagation();galeriaNav(1)" style="position:absolute;right:8px;top:50%;transform:translateY(-50%);background:rgba(0,0,0,.6);color:white;border:none;width:40px;height:40px;border-radius:50%;font-size:20px;cursor:pointer;font-family:sans-serif">&gt;</button>':'')
+          +'<div style="position:absolute;bottom:10px;left:50%;transform:translateX(-50%);background:rgba(0,0,0,.6);color:white;font-size:12px;font-weight:600;padding:4px 12px;border-radius:20px">'+(_galeriaIdx+1)+' / '+total+'</div>'
+        +'</div>'
+        +(total>1?'<div style="display:flex;gap:6px;margin-top:12px;overflow-x:auto;max-width:100%;padding:4px 0">'+_galeriaFotos.map(function(f,i){
+          return '<img src="'+f+'" onclick="event.stopPropagation();_galeriaIdx='+i+';renderGaleria()" style="width:64px;height:48px;object-fit:cover;border-radius:6px;cursor:pointer;border:2px solid '+(i===_galeriaIdx?'var(--red)':'transparent')+';opacity:'+(i===_galeriaIdx?'1':'.5')+';flex-shrink:0">';
+        }).join('')+'</div>':'')
+        +'<button onclick="closeModal()" style="position:absolute;top:10px;right:10px;background:rgba(0,0,0,.6);color:white;border:none;width:36px;height:36px;border-radius:50%;font-size:18px;cursor:pointer">&times;</button>'
+      +'</div>'
+    +'</div>';
+}
+function galeriaNav(dir){
+  _galeriaIdx=(_galeriaIdx+dir+_galeriaFotos.length)%_galeriaFotos.length;
+  renderGaleria();
+}
 
 function openCliente(id){
   const c=CLIENTES.find(function(x){return x.id===id;});
