@@ -1207,16 +1207,48 @@ async function cargarDatos() {
 }
 
 // Refresco silencioso: recarga stock y clientes sin mostrar banner de carga
+// Detecta cambios en el stock (nuevos, bajadas, subidas, eliminados)
 async function refrescarDatosSilencioso() {
   if (!SCRIPT_URL || !SHEETS_CONECTADO) return;
   try {
-    const res = await apiCall('getAll');
-    STOCK = (res.stock||[]).filter(r=>r.id).map(parseStock);
+    var stockAnterior = STOCK.slice();
+    var res = await apiCall('getAll');
+    var nuevoStock = (res.stock||[]).filter(r=>r.id).map(parseStock);
     CLIENTES = (res.clientes||[]).filter(r=>r.id).map(parseCliente);
     if (res.ubicaciones) {
       UBICACIONES = {};
       res.ubicaciones.forEach(function(r){ if(r.id && r.zona) UBICACIONES[r.id]=r.zona; });
     }
+
+    // Detectar cambios comparando stock anterior con el nuevo
+    if (stockAnterior.length > 0 && nuevoStock.length > 0) {
+      var oldStock = STOCK;
+      STOCK = stockAnterior;
+      var diff = diffStock(nuevoStock);
+      STOCK = nuevoStock;
+
+      var hayCambios = diff.nuevos.length > 0 || diff.bajadas.length > 0 || diff.subidas.length > 0 || diff.eliminados.length > 0;
+      if (hayCambios) {
+        diffResult = diff;
+        localStorage.setItem('nissan_vo_diff', JSON.stringify({
+          nuevos:    diff.nuevos.map(function(v){return {matricula:v.matricula,modelo:v.modelo,precio:v.precio};}),
+          bajadas:   diff.bajadas.map(function(x){return {matricula:x.nuevo.matricula,modelo:x.nuevo.modelo,precio:x.nuevo.precio,precioAnterior:x.anterior.precio,diff:x.diff};}),
+          subidas:   diff.subidas.map(function(x){return {matricula:x.nuevo.matricula,modelo:x.nuevo.modelo,precio:x.nuevo.precio,precioAnterior:x.anterior.precio,diff:x.diff};}),
+          eliminados:diff.eliminados.map(function(v){return {matricula:v.matricula,modelo:v.modelo};}),
+          fecha: new Date().toISOString()
+        }));
+        var msg = 'Stock actualizado';
+        if (diff.nuevos.length) msg += ' · ' + diff.nuevos.length + ' nuevos';
+        if (diff.eliminados.length) msg += ' · ' + diff.eliminados.length + ' eliminados';
+        if (diff.bajadas.length) msg += ' · ' + diff.bajadas.length + ' bajadas';
+        if (diff.subidas.length) msg += ' · ' + diff.subidas.length + ' subidas';
+        showSyncOk(msg);
+        console.log('Cambios detectados:', msg);
+      }
+    } else {
+      STOCK = nuevoStock;
+    }
+
     LAST_SYNC = new Date();
     buildAlertas();
     renderDashboard();
