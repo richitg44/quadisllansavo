@@ -1,10 +1,15 @@
 // ═══════════════════════════════════════════════════════════════════
 //  NISSAN VO MANAGER — Google Apps Script v4
 //  Hoja Clientes unificada: manuales + CRM4YOU
-//  + Lectura de Sheet externo (stock del jefe)
+//  + Sync automático desde SharePoint (Excel del jefe)
 // ═══════════════════════════════════════════════════════════════════
 
 const SHEET_ID = "1AVH8yxQ5GRAa3XLEoRYU7xielB8g-dZF4TqMd2aa4_A";
+
+// ── SHAREPOINT CONFIG ─────────────────────────────────────────────
+// Pega aquí la URL de descarga del Excel de tu jefe en SharePoint.
+// IMPORTANTE: El archivo debe estar compartido como "Cualquier persona con el enlace puede ver"
+const SHAREPOINT_DOWNLOAD_URL = 'https://sistemasquadis-my.sharepoint.com/:x:/r/personal/mginer_motorllansa_es/_layouts/15/Doc.aspx?sourcedoc=%7B96B940B5-231E-43DE-A47C-1958768B7172%7D&file=Libro4.xlsx&fromShare=true&action=download';
 
 const HOJAS = {
   clientes:    "Clientes",
@@ -61,6 +66,7 @@ function dispatch(action, body) {
     else if (action === "replaceLeadsCrm")    return replaceLeadsCrm(body.data);
     else if (action === "updateClienteMeta")  return updateClienteMeta(body.data);
     else if (action === "getExternalStock")   return getExternalStock(body.sheetId);
+    else if (action === "syncSharePoint")    return syncFromSharePoint();
     else return { error: "Acción desconocida: " + action };
   } catch(err) { return { error: err.message }; }
 }
@@ -568,6 +574,141 @@ function ensureClientesSheet(ss) {
 
 function formatHeader(sheet, numCols) {
   sheet.getRange(1,1,1,numCols).setBackground("#C3002F").setFontColor("white").setFontWeight("bold");
+}
+
+// ── SYNC DESDE SHAREPOINT (Excel del jefe) ────────────────────────
+// Descarga el Excel de SharePoint, lo convierte a Google Sheets,
+// lee las hojas "Stock VO" y "Stock DEMO", y actualiza tu Stock.
+// SOLO LEE del archivo del jefe — nunca lo modifica.
+
+function syncFromSharePoint() {
+  if (!SHAREPOINT_DOWNLOAD_URL) return { ok: false, error: 'URL de SharePoint no configurada' };
+
+  try {
+    // 1. Descargar Excel de SharePoint
+    var response = UrlFetchApp.fetch(SHAREPOINT_DOWNLOAD_URL, {
+      followRedirects: true,
+      muteHttpExceptions: true
+    });
+
+    if (response.getResponseCode() !== 200) {
+      Logger.log('Error descargando: HTTP ' + response.getResponseCode());
+      return { ok: false, error: 'HTTP ' + response.getResponseCode() };
+    }
+
+    // Si devuelve HTML = requiere login
+    var ct = response.getHeaders()['Content-Type'] || '';
+    if (ct.indexOf('text/html') >= 0) {
+      Logger.log('SharePoint devolvió HTML — requiere autenticación');
+      return { ok: false, error: 'El archivo requiere login. Compártelo como "Cualquier persona con el enlace puede ver".' };
+    }
+
+    var blob = response.getBlob().setName('stock_jefe.xlsx');
+
+    // 2. Subir a Drive y convertir a Google Sheets (temporal)
+    var tempId = uploadAndConvertExcel(blob);
+
+    // 3. Leer stock con la función existente
+    var data = getExternalStock(tempId);
+
+    // 4. Borrar archivo temporal
+    DriveApp.getFileById(tempId).setTrashed(true);
+
+    if (!data.ok || !data.stock || data.stock.length === 0) {
+      Logger.log('No se encontraron vehículos en el Excel');
+      return { ok: false, error: 'No se encontraron vehículos en el Excel' };
+    }
+
+    // 5. Mapear al formato de Stock y reemplazar
+    var mapped = data.stock.map(function(v) {
+      return {
+        id: (v.tipo === 'Demo' ? 'DEMO_' : 'VO_') + v.matricula,
+        matricula: v.matricula,
+        marca: v.marca || 'Nissan',
+        modelo: v.modelo,
+        version: v.version,
+        año: v.año,
+        km: v.km,
+        precio: v.precio,
+        color: v.color,
+        combustible: v.combustible,
+        cambio: v.cambio,
+        etiqueta: v.etiqueta,
+        foto: '',
+        isNew: false,
+        precioContado: v.precioBase || v.precio,
+        procedencia: v.procedencia,
+        estado: v.estado,
+        tipo: v.tipo,
+        fecMat: v.fecMat,
+        impFinanciar: v.impFinanciar
+      };
+    });
+
+    replaceStock(mapped);
+    Logger.log('Sync SharePoint OK: ' + mapped.length + ' vehículos importados');
+    return { ok: true, count: mapped.length };
+
+  } catch(e) {
+    Logger.log('Error sync SharePoint: ' + e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+// Sube un blob Excel a Google Drive y lo convierte a Google Sheets.
+// Devuelve el ID del archivo temporal (hay que borrarlo después).
+function uploadAndConvertExcel(blob) {
+  var boundary = 'sync' + Date.now();
+  var meta = JSON.stringify({
+    name: 'temp_sharepoint_stock',
+    mimeType: 'application/vnd.google-apps.spreadsheet'
+  });
+
+  var pre = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta +
+    '\r\n--' + boundary + '\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n';
+  var post = '\r\n--' + boundary + '--';
+
+  var payload = Utilities.newBlob(pre).getBytes()
+    .concat(blob.getBytes())
+    .concat(Utilities.newBlob(post).getBytes());
+
+  var res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'post',
+    contentType: 'multipart/related; boundary=' + boundary,
+    payload: payload,
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
+  });
+
+  return JSON.parse(res.getContentText()).id;
+}
+
+// Ejecuta esto UNA VEZ para activar el sync automático cada 10 minutos.
+// Selecciona esta función en el editor > Ejecutar
+function setupSharePointSync() {
+  // Eliminar triggers anteriores
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncFromSharePoint') ScriptApp.deleteTrigger(t);
+  });
+
+  // Crear trigger cada 10 minutos
+  ScriptApp.newTrigger('syncFromSharePoint')
+    .timeBased()
+    .everyMinutes(10)
+    .create();
+
+  Logger.log('Trigger configurado: sync desde SharePoint cada 10 minutos');
+
+  // Ejecutar ahora para verificar que funciona
+  var result = syncFromSharePoint();
+  Logger.log('Primera ejecución: ' + JSON.stringify(result));
+}
+
+// Ejecuta esto si quieres PARAR el sync automático
+function stopSharePointSync() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncFromSharePoint') ScriptApp.deleteTrigger(t);
+  });
+  Logger.log('Sync desde SharePoint detenido');
 }
 
 // ── SETUP ─────────────────────────────────────────────────────────
