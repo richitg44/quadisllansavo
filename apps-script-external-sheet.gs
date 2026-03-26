@@ -1,10 +1,16 @@
 // ═══════════════════════════════════════════════════════════════════
 //  NISSAN VO MANAGER — Google Apps Script v4
 //  Hoja Clientes unificada: manuales + CRM4YOU
-//  + Lectura de Sheet externo (stock del jefe)
+//  + Sync automático desde SharePoint (Excel del jefe)
 // ═══════════════════════════════════════════════════════════════════
 
 const SHEET_ID = "1AVH8yxQ5GRAa3XLEoRYU7xielB8g-dZF4TqMd2aa4_A";
+
+// ── SHAREPOINT CONFIG ─────────────────────────────────────────────
+// El Excel llega a tu Gmail como adjunto desde Power Automate.
+// Power Automate (cuenta empresa) envía el Excel a richitg44@gmail.com
+// con el asunto [STOCK-SYNC]. Apps Script lo lee automáticamente.
+const SYNC_EMAIL_SUBJECT = '[STOCK-SYNC]';
 
 const HOJAS = {
   clientes:    "Clientes",
@@ -61,6 +67,7 @@ function dispatch(action, body) {
     else if (action === "replaceLeadsCrm")    return replaceLeadsCrm(body.data);
     else if (action === "updateClienteMeta")  return updateClienteMeta(body.data);
     else if (action === "getExternalStock")   return getExternalStock(body.sheetId);
+    else if (action === "syncEmail")          return syncFromEmail();
     else return { error: "Acción desconocida: " + action };
   } catch(err) { return { error: err.message }; }
 }
@@ -568,6 +575,151 @@ function ensureClientesSheet(ss) {
 
 function formatHeader(sheet, numCols) {
   sheet.getRange(1,1,1,numCols).setBackground("#C3002F").setFontColor("white").setFontWeight("bold");
+}
+
+// ── SYNC VÍA EMAIL (Power Automate → Gmail → Apps Script) ────────
+// Power Automate envía el Excel del jefe a richitg44@gmail.com
+// con asunto [STOCK-SYNC]. Esta función lo detecta y procesa.
+// SOLO LEE del archivo del jefe — nunca lo modifica.
+
+function syncFromEmail() {
+  try {
+    // 1. Buscar emails con el asunto [STOCK-SYNC] no leídos
+    var threads = GmailApp.search('subject:' + SYNC_EMAIL_SUBJECT + ' is:unread', 0, 1);
+
+    if (threads.length === 0) {
+      Logger.log('No hay emails [STOCK-SYNC] nuevos');
+      return { ok: true, message: 'Sin emails nuevos' };
+    }
+
+    var messages = threads[0].getMessages();
+    var latest = messages[messages.length - 1];
+    var attachments = latest.getAttachments();
+
+    // 2. Buscar adjunto Excel
+    var excelBlob = null;
+    for (var i = 0; i < attachments.length; i++) {
+      var name = attachments[i].getName().toLowerCase();
+      if (name.indexOf('.xlsx') >= 0 || name.indexOf('.xls') >= 0) {
+        excelBlob = attachments[i].copyBlob();
+        break;
+      }
+    }
+
+    if (!excelBlob) {
+      Logger.log('Email encontrado pero sin adjunto Excel');
+      threads[0].markRead();
+      return { ok: false, error: 'Email sin adjunto Excel' };
+    }
+
+    excelBlob.setName('stock_sync.xlsx');
+
+    // 3. Subir a Drive y convertir a Google Sheets (temporal)
+    var tempId = uploadAndConvertExcel(excelBlob);
+
+    // 4. Leer stock con la función existente
+    var data = getExternalStock(tempId);
+
+    // 5. Borrar archivo temporal
+    DriveApp.getFileById(tempId).setTrashed(true);
+
+    if (!data.ok || !data.stock || data.stock.length === 0) {
+      Logger.log('No se encontraron vehículos en el Excel');
+      threads[0].markRead();
+      return { ok: false, error: 'No se encontraron vehículos en el Excel' };
+    }
+
+    // 6. Mapear al formato de Stock y reemplazar
+    var mapped = data.stock.map(function(v) {
+      return {
+        id: (v.tipo === 'Demo' ? 'DEMO_' : 'VO_') + v.matricula,
+        matricula: v.matricula,
+        marca: v.marca || 'Nissan',
+        modelo: v.modelo,
+        version: v.version,
+        año: v.año,
+        km: v.km,
+        precio: v.precio,
+        color: v.color,
+        combustible: v.combustible,
+        cambio: v.cambio,
+        etiqueta: v.etiqueta,
+        foto: '',
+        isNew: false,
+        precioContado: v.precioBase || v.precio,
+        procedencia: v.procedencia,
+        estado: v.estado,
+        tipo: v.tipo,
+        fecMat: v.fecMat,
+        impFinanciar: v.impFinanciar
+      };
+    });
+
+    replaceStock(mapped);
+
+    // 7. Marcar email como leído y archivar
+    threads[0].markRead();
+    threads[0].moveToArchive();
+
+    Logger.log('Sync Email OK: ' + mapped.length + ' vehículos importados desde email de ' + latest.getFrom());
+    return { ok: true, count: mapped.length };
+
+  } catch(e) {
+    Logger.log('Error sync email: ' + e.message);
+    return { ok: false, error: e.message };
+  }
+}
+
+// Sube un blob Excel a Google Drive y lo convierte a Google Sheets.
+// Devuelve el ID del archivo temporal (hay que borrarlo después).
+function uploadAndConvertExcel(blob) {
+  var boundary = 'sync' + Date.now();
+  var meta = JSON.stringify({
+    name: 'temp_sharepoint_stock',
+    mimeType: 'application/vnd.google-apps.spreadsheet'
+  });
+
+  var pre = '--' + boundary + '\r\nContent-Type: application/json; charset=UTF-8\r\n\r\n' + meta +
+    '\r\n--' + boundary + '\r\nContent-Type: application/vnd.openxmlformats-officedocument.spreadsheetml.sheet\r\n\r\n';
+  var post = '\r\n--' + boundary + '--';
+
+  var payload = Utilities.newBlob(pre).getBytes()
+    .concat(blob.getBytes())
+    .concat(Utilities.newBlob(post).getBytes());
+
+  var res = UrlFetchApp.fetch('https://www.googleapis.com/upload/drive/v3/files?uploadType=multipart&fields=id', {
+    method: 'post',
+    contentType: 'multipart/related; boundary=' + boundary,
+    payload: payload,
+    headers: { Authorization: 'Bearer ' + ScriptApp.getOAuthToken() }
+  });
+
+  return JSON.parse(res.getContentText()).id;
+}
+
+// Ejecuta esto UNA VEZ para activar el sync automático cada 10 minutos.
+// Selecciona esta función en el editor > Ejecutar
+function setupEmailSync() {
+  // Eliminar triggers anteriores
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncFromEmail') ScriptApp.deleteTrigger(t);
+  });
+
+  // Crear trigger cada 10 minutos
+  ScriptApp.newTrigger('syncFromEmail')
+    .timeBased()
+    .everyMinutes(10)
+    .create();
+
+  Logger.log('Trigger configurado: revisar Gmail cada 10 minutos para [STOCK-SYNC]');
+}
+
+// Ejecuta esto si quieres PARAR el sync automático
+function stopEmailSync() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'syncFromEmail') ScriptApp.deleteTrigger(t);
+  });
+  Logger.log('Sync por email detenido');
 }
 
 // ── SETUP ─────────────────────────────────────────────────────────
