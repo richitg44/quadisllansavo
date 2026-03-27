@@ -3815,15 +3815,32 @@ function buildQueHacerHoy() {
     }
   });
 
-  // 3. Clientes activos sin contactar en +5 días
+  // 3. Clientes activos sin contactar en +5 días (manuales)
   CLIENTES.filter(function(c){ return c.estado === 'Activo'; }).forEach(function(c) {
     var key = clienteKeyFromCliente(c);
     var dias = diasSinContacto(key);
     if (dias >= 5 && dias < 999) {
       items.push({ prioridad: 3, tipo: 'inactivo', emoji: '🟠', label: dias + ' días sin contacto', cliente: c.nombre, detalle: '', clienteId: c.id });
     } else if (dias >= 999) {
-      // Nunca contactado
       items.push({ prioridad: 3, tipo: 'sincontacto', emoji: '⚪', label: 'Nunca contactado', cliente: c.nombre, detalle: '', clienteId: c.id });
+    }
+  });
+
+  // 4. Leads importados (Motorflash/CRM) sin contactar en +3 días
+  var lds = (typeof leads !== 'undefined' && leads) ? leads : [];
+  var nombresYaEnLista = {};
+  items.forEach(function(i){ nombresYaEnLista[i.cliente] = true; });
+  lds.filter(function(l){
+    var est = (l.estado||'').toLowerCase();
+    return est !== 'descartado' && !descartados.has(clienteKey(l));
+  }).forEach(function(l) {
+    if (nombresYaEnLista[l.nombre]) return; // ya está por seguimiento
+    var key = clienteKey(l);
+    var dias = diasSinContacto(key);
+    if (dias >= 3 && dias < 999) {
+      items.push({ prioridad: 3, tipo: 'inactivo', emoji: '🟠', label: dias + ' días sin contacto', cliente: l.nombre, detalle: l.vehiculo || '', leadId: l.id });
+    } else if (dias >= 999) {
+      items.push({ prioridad: 4, tipo: 'sincontacto', emoji: '⚪', label: 'Sin contactar', cliente: l.nombre, detalle: l.vehiculo || '', leadId: l.id });
     }
   });
 
