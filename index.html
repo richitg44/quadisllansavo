@@ -4470,9 +4470,9 @@ function exportarCalendarioICS() {
     lines.push('DTEND;VALUE=DATE:' + fecha);
     lines.push('SUMMARY:' + titulo);
     if (desc) lines.push('DESCRIPTION:' + desc);
-    // Alerta 1 hora antes (mañana a las 8:00)
+    // Alerta a las 9:00 (entrada a trabajar)
     lines.push('BEGIN:VALARM');
-    lines.push('TRIGGER;VALUE=DATE-TIME:' + fecha + 'T080000');
+    lines.push('TRIGGER;VALUE=DATE-TIME:' + fecha + 'T090000');
     lines.push('ACTION:DISPLAY');
     lines.push('DESCRIPTION:' + titulo);
     lines.push('END:VALARM');
