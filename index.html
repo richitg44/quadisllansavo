@@ -1110,6 +1110,7 @@ let CLIENTES = [];
 let ALERTAS = [];
 let UBICACIONES = {}; // id -> zona (Expo|Playa|Terraza|-2)
 let currentTab = 'dashboard';
+const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 
 // €€ GOOGLE SHEETS API €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
 async function apiCall(action, data) {
@@ -3679,10 +3680,10 @@ async function cargarLeadsDesdeSheets() {
 // ════════════════════════════════════════════════════
 // STATE
 // ════════════════════════════════════════════════════
-let leads = [];
-let followups       = JSON.parse(localStorage.getItem('mf_followups')      || '[]');
-let notasCliente    = JSON.parse(localStorage.getItem('mf_notas_cliente')  || '{}');
-let descartados     = new Set(JSON.parse(localStorage.getItem('mf_descartados') || '[]'));
+var leads = [];
+var followups       = JSON.parse(localStorage.getItem('mf_followups')      || '[]');
+var notasCliente    = JSON.parse(localStorage.getItem('mf_notas_cliente')  || '{}');
+var descartados     = new Set(JSON.parse(localStorage.getItem('mf_descartados') || '[]'));
 let rawHeaders = [];
 let rawData = [];
 let currentFilter = 'all';
@@ -3723,11 +3724,11 @@ function getMisNotasTexto(key) {
   if (!notas.length) return '';
   return notas.map(n => `• [${n.fecha}${n.resultado ? ' · ' + n.resultado : ''}] ${n.texto}`).join('\n');
 }
-const TODAY = new Date(); TODAY.setHours(0,0,0,0);
 
 // ── Último contacto y días sin contactar ─────────────────────────
 function getUltimoContacto(key) {
-  var notas = getNotasCliente(key);
+  var nc = (typeof notasCliente !== 'undefined' && notasCliente) ? notasCliente : {};
+  var notas = nc[key] || [];
   if (!notas.length) return null;
   var fechas = notas.map(function(n){ return n.fecha; }).filter(Boolean).sort();
   return fechas.length ? fechas[fechas.length - 1] : null;
@@ -3797,16 +3798,18 @@ function guardarContactoRapido(key, tipo, clienteId) {
 function buildQueHacerHoy() {
   var hoy = dateToStr(TODAY);
   var items = [];
+  var fups = (typeof followups !== 'undefined' && followups) ? followups : [];
+  var nCliente = (typeof notasCliente !== 'undefined' && notasCliente) ? notasCliente : {};
 
   // 1. Seguimientos vencidos (no de hoy, anteriores)
-  followups.forEach(function(f) {
+  fups.forEach(function(f) {
     if (f.fecha < hoy) {
       items.push({ prioridad: 1, tipo: 'vencido', emoji: '🔴', label: 'VENCIDO', cliente: f.cliente, detalle: f.notas || '', tipoContacto: f.tipo, leadId: f.leadId });
     }
   });
 
   // 2. Seguimientos de hoy
-  followups.forEach(function(f) {
+  fups.forEach(function(f) {
     if (f.fecha === hoy) {
       items.push({ prioridad: 2, tipo: 'hoy', emoji: '🟡', label: 'HOY', cliente: f.cliente, detalle: f.notas || '', tipoContacto: f.tipo, leadId: f.leadId });
     }
