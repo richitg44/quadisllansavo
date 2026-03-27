@@ -130,7 +130,21 @@ select{appearance:none;cursor:pointer}
 .mobile-header{display:none;background:var(--dark);border-bottom:1px solid var(--border);padding:0 16px;height:48px;align-items:center;position:sticky;top:0;z-index:100}
   .mobile-logo{font-family:'Nissan Brand',sans-serif;font-size:22px;letter-spacing:3px;color:var(--red)}
   .mobile-logo span{color:var(--text);font-size:11px;font-family:'Nissan Brand',sans-serif;font-weight:300;letter-spacing:1px;margin-left:2px}
-  @media(max-width:700px){.grid-3{grid-template-columns:1fr 1fr}.fgrid{grid-template-columns:1fr}.nav-btn .nl{display:none}.header{display:none}.mobile-nav{display:block}.mobile-header{display:flex}.main{padding:16px;padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 16px);padding-top:12px}}
+  @media(max-width:700px){.grid-3{grid-template-columns:1fr 1fr}.fgrid{grid-template-columns:1fr}.nav-btn .nl{display:none}.header{display:none}.mobile-nav{display:block}.mobile-header{display:flex}.main{padding:16px;padding-bottom:calc(var(--nav-h) + var(--safe-bottom) + 16px);padding-top:12px}
+  .cal-layout{grid-template-columns:1fr!important}
+  .cal-day-panel{position:static!important;margin-top:12px}
+  .cal-day{min-height:50px!important;padding:4px 3px 2px!important}
+  .followup-pill{display:none!important}
+  .pill-more{display:none!important}
+  .day-num{font-size:11px!important;justify-content:center!important}
+  .day-count{font-size:8px!important;padding:0 4px!important}
+  .cal-day.has-events{background:rgba(59,130,246,.08)!important}
+  .cal-day.has-events .day-num{color:var(--blue)!important}
+  .cal-header{flex-wrap:wrap;gap:8px}
+  .cal-header h2{font-size:18px!important}
+  .upcoming-bar{display:none!important}
+  .cdp-body{max-height:none!important}
+}
 @media(max-width:500px){.grid-3{grid-template-columns:1fr}}
 
 /* ═══════════════════════════════════════════
@@ -835,6 +849,7 @@ document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {
       <button class="cal-nav" id="cal-next">›</button>
       <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
         <button id="btn-cal-hoy" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Syne',sans-serif;font-weight:600" onclick="calYear=TODAY.getFullYear();calMonth=TODAY.getMonth();renderCalendar()">Hoy</button>
+        <button style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Syne',sans-serif;font-weight:600" onclick="exportarCalendarioICS()">📲 Exportar a iPhone</button>
       </div>
     </div>
 
@@ -4426,6 +4441,61 @@ Responde en HTML con etiquetas <p> y <b>. Sé conciso y práctico. Usa emojis.`;
 // ════════════════════════════════════════════════════
 function saveFollowups() {
   localStorage.setItem('mf_followups', JSON.stringify(followups));
+}
+
+// Exportar todos los seguimientos como archivo .ics para iPhone/Google Calendar
+function exportarCalendarioICS() {
+  var fups = followups || [];
+  if (!fups.length) { alert('No hay seguimientos para exportar'); return; }
+
+  var TIPO_LABEL = { llamada:'Llamada', whatsapp:'WhatsApp', visita:'Visita al concesionario', email:'Email' };
+  var lines = [
+    'BEGIN:VCALENDAR',
+    'VERSION:2.0',
+    'PRODID:-//Nissan VO Manager//ES',
+    'CALSCALE:GREGORIAN',
+    'METHOD:PUBLISH',
+    'X-WR-CALNAME:Seguimientos VO Manager'
+  ];
+
+  fups.forEach(function(f) {
+    var fecha = (f.fecha || '').replace(/-/g, '');
+    if (!fecha || fecha.length !== 8) return;
+    var tipo = TIPO_LABEL[f.tipo] || 'Seguimiento';
+    var titulo = tipo + ' - ' + (f.cliente || 'Sin nombre');
+    var desc = (f.notas || '').replace(/\n/g, '\\n');
+
+    lines.push('BEGIN:VEVENT');
+    lines.push('DTSTART;VALUE=DATE:' + fecha);
+    lines.push('DTEND;VALUE=DATE:' + fecha);
+    lines.push('SUMMARY:' + titulo);
+    if (desc) lines.push('DESCRIPTION:' + desc);
+    // Alerta 1 hora antes (mañana a las 8:00)
+    lines.push('BEGIN:VALARM');
+    lines.push('TRIGGER;VALUE=DATE-TIME:' + fecha + 'T080000');
+    lines.push('ACTION:DISPLAY');
+    lines.push('DESCRIPTION:' + titulo);
+    lines.push('END:VALARM');
+    // Alerta 30 min antes
+    lines.push('BEGIN:VALARM');
+    lines.push('TRIGGER:-PT30M');
+    lines.push('ACTION:DISPLAY');
+    lines.push('DESCRIPTION:' + titulo);
+    lines.push('END:VALARM');
+    lines.push('UID:vo-' + (f.id || Date.now()) + '@nissanvo');
+    lines.push('END:VEVENT');
+  });
+
+  lines.push('END:VCALENDAR');
+
+  var blob = new Blob([lines.join('\r\n')], { type: 'text/calendar;charset=utf-8' });
+  var url = URL.createObjectURL(blob);
+  var a = document.createElement('a');
+  a.href = url;
+  a.download = 'seguimientos_vo.ics';
+  a.click();
+  URL.revokeObjectURL(url);
+  showSyncOk('Archivo .ics descargado. Ábrelo en tu iPhone para importar los eventos.');
 }
 
 // Procesar seguimientos recurrentes: si la fecha ya pasó, crear el siguiente
