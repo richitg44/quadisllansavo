@@ -429,7 +429,8 @@ function getExternalStock(sheetId) {
       for (var r = 1; r < dataVO.length; r++) {
         var row = dataVO[r];
         var estado = String(row[colMap.estado] || '').trim();
-        if (!estado || estado === 'Vendido' || estado === 'IAC') continue;
+        if (estado === 'Vendido' || estado === 'IAC') continue;
+        if (!estado) estado = 'Libre';
         var mat = String(row[colMap.matricula] || '').toUpperCase().trim();
         if (!mat || mat.length < 6) continue;
         var precio = parseInt(String(row[colMap.precio] || '0').replace(/[^0-9]/g, '')) || 0;
@@ -509,7 +510,8 @@ function getExternalStock(sheetId) {
       for (var r = headerRow + 1; r < dataDemo.length; r++) {
         var row = dataDemo[r];
         var estado = String(row[colMapD.estado] || '').trim();
-        if (!estado || estado === 'Vendido' || estado === 'IAC') continue;
+        if (estado === 'Vendido' || estado === 'IAC') continue;
+        if (!estado) estado = 'Libre';
         var mat = String(row[colMapD.matricula] || '').toUpperCase().trim();
         if (!mat || mat.length < 6) continue;
         var precio = parseInt(String(row[colMapD.precio] || '0').replace(/[^0-9]/g, '')) || 0;

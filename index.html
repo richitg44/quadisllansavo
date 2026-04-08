@@ -1738,7 +1738,7 @@ function parsearExcelNissan(workbook){
     }
     for(const row of rows){
       const estado=clean(row['Estado']);
-      if(!estado||estado==='Vendido'||estado==='IAC') continue;
+      if(estado==='Vendido'||estado==='IAC') continue;
       const mat=clean(row['Matricula']).toUpperCase();
       if(!mat||mat.length<6) continue;
       const comb=clean(row['Combustible']), dist=clean(row['Dist Medioamb']);
@@ -1769,7 +1769,7 @@ function parsearExcelNissan(workbook){
     const rows = XLSX.utils.sheet_to_json(wsDemo, {defval:'', raw:false, range:3});
     for(const row of rows){
       const estado=clean(row['Estado']);
-      if(!estado||estado==='Vendido'||estado==='IAC') continue;
+      if(estado==='Vendido'||estado==='IAC') continue;
       const mat=clean(row['Matricula']).toUpperCase();
       if(!mat||mat.length<6) continue;
       const comb=clean(row['Combustible']);
