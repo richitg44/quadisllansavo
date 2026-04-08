@@ -2041,93 +2041,121 @@ function renderDashboard(){
     +'<div class="card"><div class="card-title">📋 QUÉ HACER HOY</div>'+renderQueHacerHtml()+'</div>'
     +'<div class="card"><div class="card-title"> MEJORES MATCHES HOY</div>'+alertasHtml+'</div>'
     +'<div class="card">'
-    +'<div class="card-title"> STOCK RECIENTE <div class="flex gap2"><button class="btn excel" onclick="openExcelModal()" style="font-size:12px;padding:7px 13px"> Importar Excel</button><button class="btn" onclick="openAddStock()" style="font-size:12px;padding:7px 13px">+ Manual</button></div></div>'
+    +'<div class="card-title"> CAMBIOS EN STOCK</div>'
     + (function(){
-        // Nuevas entradas: isNew=true
-        var nuevos = STOCK.filter(function(v){ return v.isNew; }).slice(0,6);
-
-        // Bajadas y subidas: del último diff guardado (comparación real por matrícula)
         var diffGuardado = diffResult;
-        var bajadas = [];
-        var subidas = [];
-        if(diffGuardado){
-          // bajadas puede ser array de objetos {matricula,modelo,precio,precioAnterior,diff}
-          // o array de {nuevo,anterior,diff} dependiendo de si viene del live diff o del localStorage
-          bajadas = (diffGuardado.bajadas||[]).slice(0,4);
-          subidas = (diffGuardado.subidas||[]).slice(0,4);
+        var cambios = [];
+
+        // Bajadas de precio
+        if(diffGuardado && diffGuardado.bajadas){
+          diffGuardado.bajadas.forEach(function(x){
+            var mat = x.nuevo ? x.nuevo.matricula : x.matricula;
+            var mod = x.nuevo ? x.nuevo.modelo : x.modelo;
+            var pr  = x.nuevo ? x.nuevo.precio : x.precio;
+            var prev= x.anterior ? x.anterior.precio : x.precioAnterior;
+            var df  = x.diff || (pr - prev);
+            var veh = STOCK.find(function(v){ return (v.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'') === (mat||'').toUpperCase().replace(/[^A-Z0-9]/g,''); });
+            cambios.push({ tipo:'bajada', mat:mat, mod:mod, precio:pr, previo:prev, diff:df, veh:veh });
+          });
+        }
+        // Subidas de precio
+        if(diffGuardado && diffGuardado.subidas){
+          diffGuardado.subidas.forEach(function(x){
+            var mat = x.nuevo ? x.nuevo.matricula : x.matricula;
+            var mod = x.nuevo ? x.nuevo.modelo : x.modelo;
+            var pr  = x.nuevo ? x.nuevo.precio : x.precio;
+            var prev= x.anterior ? x.anterior.precio : x.precioAnterior;
+            var df  = x.diff || (pr - prev);
+            var veh = STOCK.find(function(v){ return (v.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'') === (mat||'').toUpperCase().replace(/[^A-Z0-9]/g,''); });
+            cambios.push({ tipo:'subida', mat:mat, mod:mod, precio:pr, previo:prev, diff:df, veh:veh });
+          });
         }
 
         var html = '';
 
-        if(nuevos.length > 0){
+        // Cambios de precio: tarjetas compactas con precio anterior tachado
+        if(cambios.length > 0){
           html += '<div style="margin-bottom:16px">'
-            +'<div style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"> Nuevas entradas ('+nuevos.length+')</div>'
-            +'<div class="grid-auto">'+nuevos.map(vcardHtml).join('')+'</div>'
-          +'</div>';
-        }
-
-        if(bajadas.length > 0){
-          var bajHtml = bajadas.map(function(x){
-            // x puede ser {nuevo,anterior,diff} o {matricula,modelo,precio,precioAnterior,diff}
-            var mat = x.nuevo ? x.nuevo.matricula : x.matricula;
-            var mod = x.nuevo ? x.nuevo.modelo : x.modelo;
-            var pr  = x.nuevo ? x.nuevo.precio  : x.precio;
-            var prev= x.anterior ? x.anterior.precio : x.precioAnterior;
-            var df  = x.diff || (pr - prev);
-            // Buscar el vehículo completo en STOCK para usar vcardHtml
-            var veh = STOCK.find(function(v){ return (v.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'') === (mat||'').toUpperCase().replace(/[^A-Z0-9]/g,''); });
-            if(veh) return vcardHtml(veh)
-              + '<div style="text-align:center;font-size:12px;margin-top:-8px;margin-bottom:8px;color:var(--green);font-weight:700">'
-              +' '+Math.abs(df).toLocaleString()+' <span style="color:var(--muted);font-weight:400;text-decoration:line-through">'+prev.toLocaleString()+'€</span></div>';
-            return '<div class="vcard"><div style="font-weight:600;font-size:13px">'+mod+'</div><div style="font-family:monospace;font-size:11px;color:var(--muted)">'+mat+'</div>'
-              +'<div style="color:var(--green);font-weight:700;margin-top:8px"> '+Math.abs(df).toLocaleString()+'€</div></div>';
-          }).join('');
-          html += '<div style="margin-bottom:16px">'
-            +'<div style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"> Bajadas de precio ('+bajadas.length+')</div>'
-            +'<div class="grid-auto">'+bajHtml+'</div>'
-          +'</div>';
-        }
-
-        if(subidas.length > 0){
-          var subHtml = subidas.map(function(x){
-            var mat = x.nuevo ? x.nuevo.matricula : x.matricula;
-            var mod = x.nuevo ? x.nuevo.modelo : x.modelo;
-            var pr  = x.nuevo ? x.nuevo.precio  : x.precio;
-            var prev= x.anterior ? x.anterior.precio : x.precioAnterior;
-            var df  = x.diff || (pr - prev);
-            var veh = STOCK.find(function(v){ return (v.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'') === (mat||'').toUpperCase().replace(/[^A-Z0-9]/g,''); });
-            if(veh) return vcardHtml(veh)
-              + '<div style="text-align:center;font-size:12px;margin-top:-8px;margin-bottom:8px;color:#ff6b6b;font-weight:700">'
-              +' '+Math.abs(df).toLocaleString()+' <span style="color:var(--muted);font-weight:400;text-decoration:line-through">'+prev.toLocaleString()+'€</span></div>';
-            return '<div class="vcard"><div style="font-weight:600;font-size:13px">'+mod+'</div><div style="font-family:monospace;font-size:11px;color:var(--muted)">'+mat+'</div>'
-              +'<div style="color:#ff6b6b;font-weight:700;margin-top:8px"> '+Math.abs(df).toLocaleString()+'€</div></div>';
-          }).join('');
-          html += '<div style="margin-bottom:8px">'
-            +'<div style="font-size:11px;font-weight:700;color:#ff6b6b;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"> Subidas de precio ('+subidas.length+')</div>'
-            +'<div class="grid-auto">'+subHtml+'</div>'
-          +'</div>';
-        }
-
-        // Eliminados en el último import
-        var eliminados = diffGuardado ? (diffGuardado.eliminados||[]) : [];
-        if(eliminados.length > 0){
-          var fechaImport = diffGuardado.fecha ? ' · ' + new Date(diffGuardado.fecha).toLocaleDateString('es-ES',{day:'2-digit',month:'short'}) : '';
-          html += '<div style="margin-bottom:8px">'
-            +'<div style="font-size:11px;font-weight:700;color:#ff3b30;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px"> Eliminados del stock ('+eliminados.length+')'+fechaImport+'</div>'
+            +'<div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Cambios de precio ('+cambios.length+')</div>'
             +'<div style="display:flex;flex-direction:column;gap:6px">'
-            +eliminados.map(function(v){
-              return '<div style="display:flex;align-items:center;gap:10px;padding:8px 12px;background:rgba(255,59,48,.05);border:1px solid rgba(255,59,48,.15);border-radius:8px">'
-                +'<span style="font-size:18px"></span>'
-                +'<div><div style="font-size:13px;font-weight:600;color:var(--muted)">'+v.modelo+'</div>'
-                +'<div style="font-family:monospace;font-size:11px;color:var(--muted)">'+v.matricula+'</div></div>'
-                +'<div style="margin-left:auto;font-size:11px;color:#ff3b30;font-weight:600">Retirado</div>'
+            +cambios.slice(0,8).map(function(c){
+              var esBajada = c.tipo === 'bajada';
+              var color = esBajada ? 'var(--green)' : '#ff3b30';
+              var flecha = esBajada ? '↓' : '↑';
+              var fotoHtml = '';
+              if(c.veh && c.veh.foto){
+                var primerFoto = c.veh.foto.split('|')[0];
+                if(primerFoto.indexOf('http')===0) fotoHtml = '<img src="'+primerFoto+'" style="width:48px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0">';
+              }
+              return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:var(--mid);border:1px solid var(--border);border-radius:10px">'
+                +(fotoHtml || '<span style="font-size:22px;flex-shrink:0">'+(c.veh?fotoEmoji(c.veh.foto):'🚗')+'</span>')
+                +'<div style="flex:1;min-width:0">'
+                  +'<div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+c.mod+'</div>'
+                  +'<div style="font-family:monospace;font-size:10px;color:var(--muted)">'+c.mat+'</div>'
+                +'</div>'
+                +'<div style="text-align:right;flex-shrink:0">'
+                  +'<div style="font-weight:800;font-size:15px;color:'+color+'">'+c.precio.toLocaleString()+'€ <span style="font-size:12px">'+flecha+'</span></div>'
+                  +'<div style="font-size:11px;color:var(--muted);text-decoration:line-through">'+c.previo.toLocaleString()+'€</div>'
+                +'</div>'
               +'</div>';
             }).join('')
             +'</div></div>';
         }
 
+        // Nuevas entradas al stock
+        var nuevos = STOCK.filter(function(v){ return v.isNew && v.tipo !== 'Próximamente'; }).slice(0,4);
+        if(nuevos.length > 0){
+          html += '<div style="margin-bottom:16px">'
+            +'<div style="font-size:11px;font-weight:700;color:var(--green);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Nuevas entradas ('+nuevos.length+')</div>'
+            +'<div style="display:flex;flex-direction:column;gap:6px">'
+            +nuevos.map(function(v){
+              var fotoHtml = '';
+              if(v.foto){ var f1=v.foto.split('|')[0]; if(f1.indexOf('http')===0) fotoHtml='<img src="'+f1+'" style="width:48px;height:36px;object-fit:cover;border-radius:6px;flex-shrink:0">'; }
+              return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(34,197,94,.04);border:1px solid rgba(34,197,94,.15);border-radius:10px">'
+                +(fotoHtml || '<span style="font-size:22px;flex-shrink:0">'+fotoEmoji(v.foto)+'</span>')
+                +'<div style="flex:1;min-width:0">'
+                  +'<div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+v.modelo+'</div>'
+                  +'<div style="font-size:11px;color:var(--muted)">'+v.version+'</div>'
+                +'</div>'
+                +(v.precio?'<div style="font-weight:800;font-size:15px">'+v.precio.toLocaleString()+'€</div>':'')
+              +'</div>';
+            }).join('')
+            +'</div></div>';
+        }
+
+        // Próximamente: nuevos coches que van llegando
+        var prox = STOCK.filter(function(v){ return v.tipo === 'Próximamente'; }).slice(0,6);
+        if(prox.length > 0){
+          html += '<div style="margin-bottom:16px">'
+            +'<div style="font-size:11px;font-weight:700;color:rgba(99,102,241,.9);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Próximamente ('+prox.length+')</div>'
+            +'<div style="display:flex;flex-direction:column;gap:6px">'
+            +prox.map(function(v){
+              return '<div style="display:flex;align-items:center;gap:10px;padding:10px 12px;background:rgba(99,102,241,.04);border:1px dashed rgba(99,102,241,.2);border-radius:10px">'
+                +'<span style="font-size:22px;flex-shrink:0">'+fotoEmoji(v.foto)+'</span>'
+                +'<div style="flex:1;min-width:0">'
+                  +'<div style="font-weight:600;font-size:13px;white-space:nowrap;overflow:hidden;text-overflow:ellipsis">'+v.modelo+'</div>'
+                  +'<div style="font-size:11px;color:var(--muted)">'+v.color+(v.matricula?' · '+v.matricula:'')+'</div>'
+                +'</div>'
+                +(v.precio?'<div style="font-weight:800;font-size:14px">'+v.precio.toLocaleString()+'€</div>':'<div style="font-size:11px;color:rgba(99,102,241,.7);font-weight:600">Sin precio</div>')
+              +'</div>';
+            }).join('')
+            +'</div></div>';
+        }
+
+        // Eliminados
+        var eliminados = diffGuardado ? (diffGuardado.eliminados||[]) : [];
+        if(eliminados.length > 0){
+          html += '<div>'
+            +'<div style="font-size:11px;font-weight:700;color:#ff3b30;text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Retirados del stock ('+eliminados.length+')</div>'
+            +'<div style="display:flex;flex-wrap:wrap;gap:6px">'
+            +eliminados.map(function(v){
+              return '<span style="font-size:12px;padding:4px 10px;background:rgba(255,59,48,.06);border:1px solid rgba(255,59,48,.15);border-radius:20px;color:var(--muted)">'+v.modelo+' <span style="font-family:monospace;font-size:10px">'+v.matricula+'</span></span>';
+            }).join('')
+            +'</div></div>';
+        }
+
         if(!html){
-          html = '<div class="grid-auto">'+STOCK.slice(0,3).map(vcardHtml).join('')+'</div>';
+          html = '<div style="padding:16px;text-align:center;color:var(--muted);font-size:13px">Sin cambios recientes en el stock</div>';
         }
 
         return html;
@@ -2245,7 +2273,7 @@ function renderStockGrid(){
   var eb=document.getElementById('estado-btns');
   if(eb){
     var estadoActual=stockFiltros.estado;
-    var estados=[['','Todos'],['libre','Libre'],['reservado','Reservado']];
+    var estados=[['','Todos'],['libre','Libre'],['reservado','Reservado'],['proximamente','Próximamente']];
     eb.innerHTML=estados.map(function(e){
       var act=estadoActual===e[0];
       return '<button onclick="stockFiltros.estado=\''+e[0]+'\';renderStockGrid()" style="background:'+(act?'var(--red)':'var(--border)')+';color:'+(act?'white':'var(--muted)')+';border:none;padding:5px 8px;border-radius:6px;cursor:pointer;font-size:11px;font-weight:600;font-family:DM Sans,sans-serif">'+e[1]+'</button>';
@@ -2267,7 +2295,8 @@ function renderStockGrid(){
     if(estadoFiltro){
       var est=(v.estado||'').toLowerCase();
       if(estadoFiltro==='reservado'&&est.indexOf('reserv')<0) return false;
-      if(estadoFiltro==='libre'&&est.indexOf('reserv')>=0) return false;
+      if(estadoFiltro==='libre'&&(est.indexOf('reserv')>=0||v.tipo==='Próximamente')) return false;
+      if(estadoFiltro==='proximamente'&&v.tipo!=='Próximamente') return false;
     }
     return true;
   });
