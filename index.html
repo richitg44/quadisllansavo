@@ -85,6 +85,9 @@ label{font-size:11px;font-weight:600;color:var(--muted);text-transform:uppercase
 .vcard.reservado{opacity:.6;border-color:rgba(245,158,11,.4)}
 .vcard.reservado:hover{opacity:.85}
 .rbadge{position:absolute;top:10px;right:10px;background:rgba(245,158,11,.9);color:#000;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.3px}
+.pbadge{position:absolute;top:10px;right:10px;background:rgba(99,102,241,.9);color:#fff;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px;letter-spacing:.3px}
+.vcard.proximamente{border-style:dashed;border-color:rgba(99,102,241,.4);opacity:.85}
+.vcard.proximamente:hover{opacity:1;border-color:rgba(99,102,241,.7)}
 .nbadge{position:absolute;top:10px;right:10px;background:var(--green);color:#000;font-size:10px;font-weight:700;padding:2px 7px;border-radius:4px}
 .vemoji{font-size:32px;text-align:center;padding:8px}
 .vmodel{font-family:'Nissan Brand',sans-serif;font-size:19px;letter-spacing:1px}
@@ -1126,6 +1129,14 @@ let ALERTAS = [];
 let UBICACIONES = {}; // id -> zona (Expo|Playa|Terraza|-2)
 let currentTab = 'dashboard';
 const TODAY = new Date(); TODAY.setHours(0,0,0,0);
+var PRECIOS_MANUALES = JSON.parse(localStorage.getItem('nissan_vo_precios_manuales') || '{}');
+function savePrecios(){ localStorage.setItem('nissan_vo_precios_manuales', JSON.stringify(PRECIOS_MANUALES)); }
+function getPrecioManual(mat){ return PRECIOS_MANUALES[(mat||'').toUpperCase().replace(/[^A-Z0-9]/g,'')] || null; }
+function setPrecioManual(mat, precio, precioBase, impFinanciar){
+  var k = (mat||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+  PRECIOS_MANUALES[k] = { precio: parseInt(precio)||0, precioBase: parseInt(precioBase)||0, impFinanciar: parseInt(impFinanciar)||0 };
+  savePrecios();
+}
 
 // €€ GOOGLE SHEETS API €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
 async function apiCall(action, data) {
@@ -1196,17 +1207,32 @@ function parseCliente(row) {
 }
 
 function parseStock(row) {
+  var precio = parseInt(row.precio)||0;
+  var precioBase = parseInt(row.precioContado)||parseInt(row.precioBase)||0;
+  var impFin = parseInt(String(row.impFinanciar||'0').replace(/[^0-9]/g,''))||0;
+  var tipo = row.tipo||'';
+  var mat = row.matricula||'';
+  // Para coches "Próximamente" sin precio: aplicar precio manual si existe
+  if (tipo === 'Próximamente' && !precio) {
+    var pm = getPrecioManual(mat);
+    if (pm) { precio = pm.precio; precioBase = pm.precioBase; impFin = pm.impFinanciar; }
+  }
+  // Si el Excel ya tiene precio, limpiar precio manual
+  if (tipo !== 'Próximamente' && parseInt(row.precio) > 0) {
+    var k = (mat||'').toUpperCase().replace(/[^A-Z0-9]/g,'');
+    if (PRECIOS_MANUALES[k]) { delete PRECIOS_MANUALES[k]; savePrecios(); }
+  }
   return {
-    id:row.id, matricula:row.matricula||'', marca:row.marca||'Nissan',
+    id:row.id, matricula:mat, marca:row.marca||'Nissan',
     modelo:row.modelo||'', version:row.version||'',
     año:parseInt(row.año)||0, km:parseInt(row.km)||0,
-    precio:parseInt(row.precio)||0, precioBase:parseInt(row.precioContado)||parseInt(row.precioBase)||0,
+    precio:precio, precioBase:precioBase,
     color:row.color||'',
     combustible:normCombustible(row.combustible||'', row.modelo||'', row.version||''),
     cambio:row.cambio||'', etiqueta:row.etiqueta||'',
     foto:row.foto||'', isNew:row.isNew==='SI', estado:row.estado||'',
     procedencia:String(row.procedencia||'').toUpperCase(),
-    fecMat:parseFecha(row.fecMat).str||row.fecMat||'', tipo:row.tipo||'', impFinanciar:parseInt(String(row.impFinanciar||'0').replace(/[^0-9]/g,''))||0,
+    fecMat:parseFecha(row.fecMat).str||row.fecMat||'', tipo:tipo, impFinanciar:impFin,
     vsb:row.vsb||''
   };
 }
@@ -1896,8 +1922,9 @@ function vcardHtml(v, showCartel){
     ? '<div style="position:absolute;top:10px;left:10px;font-size:9px;font-weight:700;letter-spacing:.8px;color:var(--muted);background:var(--mid);border:1px solid var(--border);padding:2px 6px;border-radius:4px;text-transform:uppercase">'+v.procedencia+'</div>'
     : '';
   var esReservado = (v.estado||'').toLowerCase().indexOf('reserv') >= 0;
-  return '<div class="vcard '+(v.isNew?'isnew':'')+(esReservado?' reservado':'')+'">'
-    +(esReservado?'<div class="rbadge">RESERVADO</div>':v.isNew?'<div class="nbadge">NUEVO</div>':'')
+  var esProx = v.tipo === 'Próximamente';
+  return '<div class="vcard '+(v.isNew?'isnew':'')+(esReservado?' reservado':'')+(esProx?' proximamente':'')+'">'
+    +(esProx?'<div class="pbadge">PRÓXIMAMENTE</div>':esReservado?'<div class="rbadge">RESERVADO</div>':v.isNew?'<div class="nbadge">NUEVO</div>':'')
     +procHtml
     +(function(){
       var fotos = (v.foto||'').split('|').filter(function(f){return f.indexOf('http')===0;});
@@ -1926,11 +1953,53 @@ function vcardHtml(v, showCartel){
     +'</div>'
     +(function(){var zs=[['Expo','E'],['Playa','P'],['Terraza','T'],['-2','-2']];var cur=UBICACIONES[v.id]||'';return '<div style="display:flex;gap:4px;margin:8px 0">'+zs.map(function(z){var a=cur===z[0];return '<button onclick="setUbicacion(\''+v.id+'\',\''+z[0]+'\',this)" style="font-size:11px;font-weight:700;padding:3px 9px;border-radius:10px;border:1px solid '+(a?'var(--red)':'var(--border)')+';background:'+(a?'rgba(195,0,47,.15)':'var(--mid)')+';color:'+(a?'var(--red)':'var(--muted)')+';cursor:pointer;font-family:DM Sans,sans-serif">'+z[1]+'</button>';}).join('')+'</div>';})()
     +'<div class="flex ac jb mt3">'
-      +'<div><div class="vprice">'+v.precio.toLocaleString()+'€</div>'+contadoHtml+'</div>'
+      +(esProx && !pr
+        ?'<div><div class="vprice" style="color:var(--muted)">Sin precio</div><div style="font-size:11px;color:rgba(99,102,241,.8)">Pide precio a tu jefe</div></div>'
+        :'<div><div class="vprice">'+v.precio.toLocaleString()+'€</div>'+contadoHtml+'</div>')
       +(interesados>0?'<div style="font-size:12px;color:var(--muted)">'+interesados+' interesados</div>':'')
     +'</div>'
-  +(showCartel?'<button onclick="abrirCartel(\''+v.id+'\')" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1" style="width:100%;margin-top:8px;background:var(--mid);border:1px solid var(--border);border-radius:8px;padding:7px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;font-family:DM Sans,sans-serif;transition:all .15s"> Generar cartel</button>':'')
+  +(esProx?'<button onclick="editarPrecioProx(\''+v.id+'\')" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1" style="width:100%;margin-top:8px;background:rgba(99,102,241,.1);border:1px solid rgba(99,102,241,.3);border-radius:8px;padding:7px;font-size:12px;font-weight:600;color:rgba(99,102,241,.9);cursor:pointer;font-family:DM Sans,sans-serif;transition:all .15s">✏️ '+(pr?'Editar':'Poner')+' precio</button>':'')
+  +(showCartel && pr?'<button onclick="abrirCartel(\''+v.id+'\')" onmouseover="this.style.opacity=.75" onmouseout="this.style.opacity=1" style="width:100%;margin-top:8px;background:var(--mid);border:1px solid var(--border);border-radius:8px;padding:7px;font-size:12px;font-weight:600;color:var(--muted);cursor:pointer;font-family:DM Sans,sans-serif;transition:all .15s"> Generar cartel</button>':'')
   +'</div>';
+}
+
+function editarPrecioProx(vehiculoId) {
+  var v = STOCK.find(function(s){ return s.id === vehiculoId; });
+  if (!v) return;
+  var pm = getPrecioManual(v.matricula) || {};
+  document.getElementById('modal-root').innerHTML =
+    '<div class="mover" onclick="closeModal()">'
+      +'<div class="modal" style="max-width:420px" onclick="event.stopPropagation()">'
+        +'<div class="mtitle">✏️ Precio manual</div>'
+        +'<div style="font-size:13px;color:var(--muted);margin-bottom:14px">'+v.marca+' '+v.modelo+' · <span style="font-family:monospace">'+v.matricula+'</span></div>'
+        +'<div style="font-size:12px;color:rgba(99,102,241,.8);margin-bottom:14px;background:rgba(99,102,241,.06);padding:8px 12px;border-radius:8px">Este precio se mantendrá hasta que tu jefe lo añada al Excel. Entonces se actualizará automáticamente.</div>'
+        +'<div class="frow"><label>PVP Financiado</label><input id="pp-precio" type="number" placeholder="Ej: 18990" value="'+(v.precio||pm.precio||'')+'"></div>'
+        +'<div class="frow"><label>Precio Contado</label><input id="pp-contado" type="number" placeholder="Ej: 16995" value="'+(v.precioBase||pm.precioBase||'')+'"></div>'
+        +'<div class="frow"><label>Importe mínimo a financiar</label><input id="pp-financiar" type="number" placeholder="Ej: 8000" value="'+(v.impFinanciar||pm.impFinanciar||'')+'"></div>'
+        +'<div class="flex gap2 mt3">'
+          +'<button class="btn w100" onclick="guardarPrecioProx(\''+v.matricula.replace(/'/g,"\\'")+'\')" style="background:rgba(99,102,241,.9)">Guardar precio</button>'
+          +'<button class="btn sec" onclick="closeModal()">Cancelar</button>'
+        +'</div>'
+      +'</div>'
+    +'</div>';
+}
+function guardarPrecioProx(mat) {
+  var precio = (document.getElementById('pp-precio')||{}).value || 0;
+  var contado = (document.getElementById('pp-contado')||{}).value || 0;
+  var financiar = (document.getElementById('pp-financiar')||{}).value || 0;
+  setPrecioManual(mat, precio, contado, financiar);
+  // Actualizar el vehículo en STOCK
+  var k = mat.toUpperCase().replace(/[^A-Z0-9]/g,'');
+  var v = STOCK.find(function(s){ return (s.matricula||'').toUpperCase().replace(/[^A-Z0-9]/g,'') === k; });
+  if (v) {
+    v.precio = parseInt(precio) || 0;
+    v.precioBase = parseInt(contado) || 0;
+    v.impFinanciar = parseInt(financiar) || 0;
+  }
+  closeModal();
+  buildAlertas();
+  renderTab(currentTab);
+  showSyncOk('Precio guardado para ' + mat);
 }
 
 // €€ DASHBOARD €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€

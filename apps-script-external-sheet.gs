@@ -426,8 +426,17 @@ function getExternalStock(sheetId) {
         if (hl === 'vsb') colMap.vsb = i;
       });
 
+      var esProximamente = false;
       for (var r = 1; r < dataVO.length; r++) {
         var row = dataVO[r];
+
+        // Detectar sección "Próximamente"
+        var rowText = String(row[0] || '') + String(row[1] || '') + String(row[2] || '');
+        if (rowText.toUpperCase().indexOf('PROXIMAMENTE') >= 0 || rowText.toUpperCase().indexOf('PRÓXIMAMENTE') >= 0) {
+          esProximamente = true;
+          continue;
+        }
+
         var estado = String(row[colMap.estado] || '').trim();
         if (estado === 'Vendido' || estado === 'IAC') continue;
         if (!estado) estado = 'Libre';
@@ -435,7 +444,9 @@ function getExternalStock(sheetId) {
         if (!mat || mat.length < 6) continue;
         var precio = parseInt(String(row[colMap.precio] || '0').replace(/[^0-9]/g, '')) || 0;
         if (!precio) precio = parseInt(String(row[colMap.precioBase] || '0').replace(/[^0-9]/g, '')) || 0;
-        if (!precio) continue;
+
+        // Para stock principal: requerir precio. Para próximamente: permitir sin precio
+        if (!precio && !esProximamente) continue;
 
         var fecMat = '';
         if (colMap.fecMat !== undefined && row[colMap.fecMat]) {
@@ -464,7 +475,7 @@ function getExternalStock(sheetId) {
           procedencia: colMap.procedencia !== undefined ? String(row[colMap.procedencia] || '').toUpperCase().trim() : 'VO',
           impFinanciar: colMap.impFinanciar !== undefined ? parseInt(String(row[colMap.impFinanciar] || '0').replace(/[^0-9]/g, '')) || 0 : 0,
           estado: estado,
-          tipo: 'VO',
+          tipo: esProximamente ? 'Próximamente' : 'VO',
           vsb: colMap.vsb !== undefined ? String(row[colMap.vsb] || '').trim() : ''
         });
       }
