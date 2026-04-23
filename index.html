@@ -747,8 +747,6 @@ document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {
       <button class="nav-btn" onclick="showTab('clientes')" id="btn-clientes"> <span class="nl">Clientes</span> <span class="badge" id="badge-clientes">0</span></button>
       <button class="nav-btn" onclick="showTab('stock')" id="btn-stock"> <span class="nl">Stock</span> <span class="badge" id="badge-stock">0</span></button>
       <button class="nav-btn" onclick="showTab('alertas')" id="btn-alertas"> <span class="nl">Alertas</span> <span class="badge" id="badge-alertas" style="display:none">0</span></button>
-      <button class="nav-btn" onclick="showTab('crm')" id="btn-crm"> <span class="nl">CRM Leads</span></button>
-      <button class="nav-btn" onclick="showTab('propuestas')" id="btn-propuestas"> <span class="nl">Propuestas</span></button>
     </nav>
   </header>
   <div class="mobile-header"><img src="data:image/png;base64,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" alt="QUADIS Llansa" style="height:20px;width:auto;object-fit:contain"></div>
@@ -757,8 +755,6 @@ document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {
       <button class="mnav-btn active" id="mnav-dashboard" onclick="showTab('dashboard')"><span class="micon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M3 13h8V3H3v10zm0 8h8v-6H3v6zm10 0h8V11h-8v10zm0-18v6h8V3h-8z"/></svg></span>Dashboard</button>
       <button class="mnav-btn" id="mnav-alertas" onclick="showTab('alertas')"><span class="micon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M12 22c1.1 0 2-.9 2-2h-4c0 1.1.9 2 2 2zm6-6V11c0-3.07-1.64-5.64-4.5-6.32V4c0-.83-.67-1.5-1.5-1.5s-1.5.67-1.5 1.5v.68C7.63 5.36 6 7.92 6 11v5l-2 2v1h16v-1l-2-2z"/></svg></span>Alertas<span class="mnav-badge" id="mnav-badge-alertas" style="display:none">0</span></button>
       <button class="mnav-btn" id="mnav-stock" onclick="showTab('stock')"><span class="micon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M18.92 6.01C18.72 5.42 18.16 5 17.5 5h-11c-.66 0-1.21.42-1.42 1.01L3 12v8c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-1h12v1c0 .55.45 1 1 1h1c.55 0 1-.45 1-1v-8l-2.08-5.99zM6.5 16c-.83 0-1.5-.67-1.5-1.5S5.67 13 6.5 13s1.5.67 1.5 1.5S7.33 16 6.5 16zm11 0c-.83 0-1.5-.67-1.5-1.5s.67-1.5 1.5-1.5 1.5.67 1.5 1.5-.67 1.5-1.5 1.5zM5 11l1.5-4.5h11L19 11H5z"/></svg></span>Stock</button>
-      <button class="mnav-btn" id="mnav-crm" onclick="showTab('crm')"><span class="micon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M20 2H4c-1.1 0-2 .9-2 2v18l4-4h14c1.1 0 2-.9 2-2V4c0-1.1-.9-2-2-2zm-2 12H6v-2h12v2zm0-3H6V9h12v2zm0-3H6V6h12v2z"/></svg></span>CRM</button>
-      <button class="mnav-btn" id="mnav-propuestas" onclick="showTab('propuestas')"><span class="micon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M14 2H6c-1.1 0-1.99.9-1.99 2L4 20c0 1.1.89 2 1.99 2H18c1.1 0 2-.9 2-2V8l-6-6zm2 16H8v-2h8v2zm0-4H8v-2h8v2zm-3-5V3.5L18.5 9H13z"/></svg></span>Propuestas</button>
       <button class="mnav-btn" id="mnav-clientes" onclick="showTab('clientes')"><span class="micon"><svg width="22" height="22" viewBox="0 0 24 24" fill="currentColor"><path d="M16 11c1.66 0 2.99-1.34 2.99-3S17.66 5 16 5c-1.66 0-3 1.34-3 3s1.34 3 3 3zm-8 0c1.66 0 2.99-1.34 2.99-3S9.66 5 8 5C6.34 5 5 6.34 5 8s1.34 3 3 3zm0 2c-2.33 0-7 1.17-7 3.5V19h14v-2.5c0-2.33-4.67-3.5-7-3.5zm8 0c-.29 0-.62.02-.97.05 1.16.84 1.97 1.97 1.97 3.45V19h6v-2.5c0-2.33-4.67-3.5-7-3.5z"/></svg></span>Clientes</button>
     </div>
   </nav>
@@ -767,190 +763,6 @@ document.addEventListener('gesturechange', function(e){ e.preventDefault(); }, {
     <div id="tab-clientes" style="display:none"></div>
     <div id="tab-stock" style="display:none"></div>
     <div id="tab-alertas" style="display:none"></div>
-    <div id="tab-crm" style="display:none">
-<!-- CRM SUB-NAV -->
-<div class="crm-subnav" id="crm-subnav">
-  <div class="crm-subtab active" data-tab="leads">📋 Leads</div>
-  <div class="crm-subtab" data-tab="calendar">📅 Calendario</div>
-  <div class="crm-subtab" data-tab="acciones">⚡ Acciones IA</div>
-  <span style="font-size:12px;color:var(--muted);font-family:'Nissan Brand',sans-serif;margin-left:8px">Leads: <b id="total-count">0</b></span>
-  <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-    <button id="btn-settings" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Nissan Brand',sans-serif;font-weight:600">⚙ Config API</button>
-    <button id="btn-demo-toggle" onclick="toggleDemo()" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Nissan Brand',sans-serif;font-weight:600">🧪 Demo OFF</button>
-  </div>
-</div>
-<!-- ═══ PANEL: LEADS ═══ -->
-  <div class="tab-panel active" id="panel-leads">
-
-    <!-- Importar desde CRM4YOU JSON -->
-    <div class="import-crm-zone">
-      <div class="crm-icon">🔗</div>
-      <div>
-        <h4>Importar desde extensión CRM4YOU Bridge</h4>
-        <p>Carga el JSON exportado por la extensión Chrome para importar clientes con notas completas de gestores</p>
-      </div>
-      <button class="btn-import-crm" id="btn-import-crm">📂 Cargar JSON</button>
-      <input type="file" id="file-input-crm" accept=".json" style="display:none">
-    </div>
-
-    <!-- Upload zone -->
-    <div class="upload-zone" id="upload-zone">
-      <input type="file" id="file-input" accept=".csv,.xlsx,.xls">
-      <div class="upload-icon">📂</div>
-      <h3>Importar archivo de Motorflash</h3>
-      <p>Arrastra aquí tu exportación o <b>haz clic para seleccionar</b> — CSV, Excel (.xlsx/.xls)</p>
-    </div>
-
-    <!-- Column mapper -->
-    <div id="col-mapper">
-      <h4>Mapear columnas del archivo</h4>
-      <div class="mapper-grid" id="mapper-grid"></div>
-      <button id="btn-import">Importar leads →</button>
-    </div>
-
-    <!-- Toolbar -->
-    <div class="toolbar" id="leads-toolbar" style="display:none">
-      <input type="text" class="search-box" id="search-input" placeholder="Buscar por nombre, teléfono o vehículo...">
-      <button class="filter-btn active" data-filter="all">Todos</button>
-      <button class="filter-btn" data-filter="nuevo">Nuevos</button>
-      <button class="filter-btn" data-filter="contactado">Contactados</button>
-      <button class="filter-btn" data-filter="interesado">Interesados</button>
-      <button class="filter-btn" data-filter="descartado">Descartados</button>
-      <button class="filter-btn" data-filter="descartado-manual" style="border-color:var(--red);color:var(--red)">🗑 Mis descartados</button>
-    </div>
-
-    <!-- Table -->
-    <div class="leads-table-wrap" id="leads-table-wrap">
-      <div class="empty-state" id="empty-state">
-        <div class="icon">🚗</div>
-        <p>Importa un archivo de Motorflash para ver tus leads aquí</p>
-      </div>
-      <table id="leads-table" style="display:none">
-        <thead>
-          <tr>
-            <th>Cliente</th>
-            <th>Vehículo de interés</th>
-            <th>Estado</th>
-            <th>Fecha lead</th>
-            <th>Gestor</th>
-            <th>Notas gestor</th>
-            <th>Seguimiento</th>
-            <th>Acciones IA</th>
-          </tr>
-        </thead>
-        <tbody id="leads-tbody"></tbody>
-      </table>
-    </div>
-  </div>
-
-  <!-- ═══ PANEL: CALENDARIO ═══ -->
-  <div class="tab-panel" id="panel-calendar">
-    <div class="cal-header">
-      <button class="cal-nav" id="cal-prev">‹</button>
-      <div>
-        <h2 id="cal-title"></h2>
-        <div class="cal-month-label" id="cal-subtitle"></div>
-      </div>
-      <button class="cal-nav" id="cal-next">›</button>
-      <div style="margin-left:auto;display:flex;gap:8px;align-items:center">
-        <button id="btn-cal-hoy" style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Syne',sans-serif;font-weight:600" onclick="calYear=TODAY.getFullYear();calMonth=TODAY.getMonth();renderCalendar()">Hoy</button>
-        <button style="background:none;border:1px solid var(--border);color:var(--muted);padding:5px 12px;border-radius:6px;cursor:pointer;font-size:12px;font-family:'Syne',sans-serif;font-weight:600" onclick="exportarCalendarioICS()">📲 Exportar a iPhone</button>
-      </div>
-    </div>
-
-    <div class="cal-layout">
-      <!-- Calendario grid -->
-      <div class="cal-main">
-        <!-- Próximos seguimientos (compacto) -->
-        <div class="upcoming-bar" style="margin-bottom:14px">
-          <h4>Próximos seguimientos (30 días)</h4>
-          <div class="upcoming-list" id="upcoming-list">
-            <span style="color:var(--muted);font-size:13px">Sin seguimientos programados</span>
-          </div>
-        </div>
-        <div class="calendar-grid" id="calendar-grid"></div>
-      </div>
-
-      <!-- Panel lateral del día seleccionado -->
-      <div class="cal-day-panel" id="cal-day-panel">
-        <div class="cdp-header">
-          <div class="cdp-date" id="cdp-date">Selecciona un día</div>
-          <div class="cdp-title" id="cdp-title">—</div>
-          <div class="cdp-sub"  id="cdp-sub"></div>
-        </div>
-        <div class="cdp-body" id="cdp-body">
-          <div class="cdp-empty">Haz clic en cualquier día del calendario para ver o añadir seguimientos</div>
-        </div>
-        <div class="cdp-footer">
-          <button class="btn-add-day" id="btn-add-day-panel">+ Añadir seguimiento en este día</button>
-        </div>
-      </div>
-    </div>
-  </div>
-
-  <!-- ═══ PANEL: ACCIONES IA ═══ -->
-  <div class="tab-panel" id="panel-acciones">
-    <div id="acciones-empty" class="acciones-empty">
-      <div class="ae-icon">⚡</div>
-      <h3>Acciones pendientes con IA</h3>
-      <p>La IA analizará todos tus clientes importados y te mostrará qué hacer con cada uno, ordenado por urgencia.</p>
-      <button class="btn-generar" id="btn-generar-acciones">⚡ Analizar y generar acciones</button>
-      <div class="acciones-progress" id="acciones-progress" style="display:none">
-        <div class="ap-bar"><div class="ap-fill" id="ap-fill" style="width:0%"></div></div>
-        <div class="ap-txt" id="ap-txt">Analizando...</div>
-      </div>
-    </div>
-    <div id="acciones-cards" style="display:none">
-      <div class="ac-header">
-        <div><div class="ac-title">Acciones pendientes</div><div class="ac-subtitle" id="ac-counter"></div></div>
-        <div style="display:flex;gap:8px">
-          <button class="btn-regenerar" id="btn-regenerar">🔄 Regenerar</button>
-          <button class="btn-ver-lista" id="btn-toggle-vista">☰ Lista</button>
-        </div>
-      </div>
-      <div id="vista-tarjeta">
-        <div class="action-card" id="action-card-main">
-          <div class="card-prioridad" id="card-prioridad"></div>
-          <div class="card-cliente"   id="card-cliente"></div>
-          <div class="card-vehiculo"  id="card-vehiculo"></div>
-          <div class="card-accion"    id="card-accion"></div>
-          <div class="card-razon"     id="card-razon"></div>
-          <div class="card-fecha-sugerida" id="card-fecha-sugerida" style="display:none">
-            <div class="cfs-info">
-              <div class="cfs-label">📅 Seguimiento sugerido</div>
-              <div class="cfs-fecha"  id="cfs-fecha"></div>
-              <div class="cfs-motivo" id="cfs-motivo"></div>
-            </div>
-            <button class="btn-agendar" id="btn-agendar-card">+ Agendar</button>
-          </div>
-          <div class="card-mis-notas" id="card-mis-notas"><div class="cmn-label">📝 Mis notas anteriores</div><div id="card-mis-notas-list"></div></div>
-          <div class="card-historial" id="card-historial"><div class="ch-label">Última nota del gestor</div><div id="card-historial-txt"></div></div>
-        </div>
-        <div class="card-buttons">
-          <button class="cb-btn cb-omitir"   id="cb-omitir">✕<span>Omitir</span></button>
-          <button class="cb-btn cb-nota"     id="cb-nota">📝<span>Nota</span></button>
-          <button class="cb-btn cb-followup" id="cb-followup">📅<span>Agenda</span></button>
-          <button class="cb-btn cb-hecho"    id="cb-hecho">✓<span>Hecho</span></button>
-          <button class="cb-btn cb-descartar" id="cb-descartar">🗑<span>Descartar</span></button>
-        </div>
-        <div class="card-nav">
-          <button class="cn-btn" id="cn-prev">‹ Anterior</button>
-          <span class="cn-pos" id="cn-pos">1 / 1</span>
-          <button class="cn-btn" id="cn-next">Siguiente ›</button>
-        </div>
-      </div>
-      <div id="vista-lista" style="display:none">
-        <div class="acciones-list" id="acciones-list"></div>
-      </div>
-    </div>
-    <div id="acciones-done" style="display:none" class="acciones-done">
-      <div>🎉</div><h3>¡Todo al día!</h3>
-      <p>Has revisado todas las acciones.</p>
-      <button class="btn-generar" id="btn-nuevo-analisis">⚡ Nuevo análisis</button>
-    </div>
-  </div>
-    </div>
-    <div id="tab-propuestas" style="display:none"></div>
     <div id="tab-carteles" style="display:none"></div>
   </main>
 </div>
@@ -1894,8 +1706,9 @@ function showTab(name){
   if (cartelView) cartelView.style.display = 'none';
 
   currentTab=name;
-  ['dashboard','clientes','stock','alertas','crm','propuestas'].forEach(function(t){
-    document.getElementById('tab-'+t).style.display=t===name?'block':'none';
+  ['dashboard','clientes','stock','alertas'].forEach(function(t){
+    var el = document.getElementById('tab-'+t);
+    if (el) el.style.display=t===name?'block':'none';
     const btn=document.getElementById('btn-'+t);
     const mbtn=document.getElementById('mnav-'+t);
     if(btn) btn.classList.toggle('active',t===name);
@@ -1908,8 +1721,6 @@ function renderTab(name){
   else if(name==='clientes') renderClientes();
   else if(name==='stock') renderStock();
   else if(name==='alertas') renderAlertas();
-  else if(name==='crm') initCrmTab();
-  else if(name==='propuestas') renderPropuestas();
 }
 
 // €€ VCARD €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
@@ -3703,7 +3514,7 @@ function initCrmTab() {
         document.querySelectorAll('#tab-crm .tab-panel').forEach(p => p.classList.remove('active'));
         tab.classList.add('active');
         const panelId = 'panel-' + tab.dataset.tab;
-        const panel = document.getElementById(panelId);
+        const panel = $g(panelId);
         if (panel) {
           panel.classList.add('active');
           if (tab.dataset.tab === 'calendar') renderCalendar();
@@ -3717,7 +3528,7 @@ function initCrmTab() {
   document.querySelectorAll('.crm-subtab').forEach(t => t.classList.remove('active'));
   document.querySelectorAll('#tab-crm .tab-panel').forEach(p => p.classList.remove('active'));
   const leadsTab = document.querySelector('.crm-subtab[data-tab="leads"]');
-  const leadsPanel = document.getElementById('panel-leads');
+  const leadsPanel = $g('panel-leads');
   if (leadsTab) leadsTab.classList.add('active');
   if (leadsPanel) leadsPanel.classList.add('active');
   updateDemoBtn();
@@ -3896,11 +3707,11 @@ function registrarContacto(clienteId, tipo) {
         +'</div>'
       +'</div>'
     +'</div>';
-  document.getElementById('modal-root').innerHTML = resultadoModal;
+  $g('modal-root').innerHTML = resultadoModal;
 }
 function guardarContactoRapido(key, tipo, clienteId) {
-  var resultado = (document.getElementById('rc-resultado')||{}).value || 'Contactado';
-  var nota = (document.getElementById('rc-nota')||{}).value || '';
+  var resultado = ($g('rc-resultado')||{}).value || 'Contactado';
+  var nota = ($g('rc-nota')||{}).value || '';
   var tipoLabel = {llamada:'Llamada',whatsapp:'WhatsApp',visita:'Visita',email:'Email'};
   var texto = (tipoLabel[tipo]||tipo) + (nota ? ': ' + nota : '');
   addNotaCliente(key, texto, resultado, tipo);
@@ -4049,7 +3860,7 @@ function updateDemoBtn() {
   }
 }
 function showToast(msg) {
-  let t = document.getElementById('toast-demo');
+  let t = $g('toast-demo');
   if (!t) {
     t = document.createElement('div');
     t.id = 'toast-demo';
@@ -4117,13 +3928,13 @@ $g('btn-settings').onclick = () => {
   $g('input-endpoint').value = getEndpoint();
   openModal('modal-settings');
 };
-document.getElementById('save-settings').onclick = () => {
+$g('save-settings').onclick = () => {
   localStorage.setItem('mf_apikey',   $g('input-apikey').value.trim());
   localStorage.setItem('mf_endpoint', $g('input-endpoint').value.trim());
   closeModal('modal-settings');
 };
 ['close-settings','close-settings2'].forEach(id => {
-  document.getElementById(id).onclick = () => closeModal('modal-settings');
+  $g(id).onclick = () => closeModal('modal-settings');
 });
 
 // ════════════════════════════════════════════════════
@@ -4134,7 +3945,7 @@ document.querySelectorAll('.tab').forEach(tab => {
     document.querySelectorAll('.crm-subtab').forEach(t => t.classList.remove('active'));
     document.querySelectorAll('#tab-crm .tab-panel').forEach(p => p.classList.remove('active'));
     tab.classList.add('active');
-    const targetPanel = document.getElementById('panel-' + tab.dataset.tab);
+    const targetPanel = $g('panel-' + tab.dataset.tab);
     if (targetPanel) targetPanel.classList.add('active');
     if (tab.dataset.tab === 'calendar') renderCalendar();
     if (tab.dataset.tab === 'acciones') initAccionesPanel();
@@ -4144,10 +3955,10 @@ document.querySelectorAll('.tab').forEach(tab => {
 // ════════════════════════════════════════════════════
 // IMPORT CRM4YOU JSON
 // ════════════════════════════════════════════════════
-document.getElementById('btn-import-crm').onclick = () =>
-  document.getElementById('file-input-crm').click();
+$g('btn-import-crm').onclick = () =>
+  $g('file-input-crm').click();
 
-document.getElementById('file-input-crm').onchange = function() {
+$g('file-input-crm').onchange = function() {
   const file = this.files[0];
   if (!file) return;
   const reader = new FileReader();
@@ -4233,7 +4044,7 @@ function buildHistoricoLimpio(hist) {
 // ════════════════════════════════════════════════════
 // FILE UPLOAD (Excel/CSV original)
 const uploadZone = $g('upload-zone');
-const fileInput  = document.getElementById('file-input');
+const fileInput  = $g('file-input');
 
 uploadZone.addEventListener('dragover', e => { e.preventDefault(); uploadZone.classList.add('drag'); });
 uploadZone.addEventListener('dragleave', () => uploadZone.classList.remove('drag'));
@@ -4259,7 +4070,7 @@ function handleFile(file) {
 }
 
 function buildMapper() {
-  const grid = document.getElementById('mapper-grid');
+  const grid = $g('mapper-grid');
   grid.innerHTML = '';
   Object.entries(CAMPO_LABELS).forEach(([campo, label]) => {
     const div = document.createElement('div');
@@ -4291,12 +4102,12 @@ function autoDetect(campo, headers) {
   return headers.findIndex(col => h.some(hint => col.toLowerCase().includes(hint)));
 }
 
-document.getElementById('btn-import').onclick = importLeads;
+$g('btn-import').onclick = importLeads;
 
 function importLeads() {
   const map = {};
   Object.keys(CAMPO_LABELS).forEach(campo => {
-    const val = document.getElementById('map-' + campo).value;
+    const val = $g('map-' + campo).value;
     if (val !== '') map[campo] = parseInt(val);
   });
   if (map.nombre === undefined) return alert('Por favor mapea al menos la columna "Nombre del cliente".');
@@ -4346,8 +4157,8 @@ function normalizeEstado(val) {
 // RENDER LEADS
 // ════════════════════════════════════════════════════
 function renderLeads() {
-  const query  = document.getElementById('search-input').value.toLowerCase();
-  const tbody  = document.getElementById('leads-tbody');
+  const query  = $g('search-input').value.toLowerCase();
+  const tbody  = $g('leads-tbody');
   tbody.innerHTML = '';
 
   const filtered = leads.filter(l => {
@@ -4453,12 +4264,12 @@ function renderLeads() {
   tbody.querySelectorAll('.btn-notas').forEach(btn =>
     btn.onclick = e => {
       e.stopPropagation();
-      const row = document.getElementById(`notas-row-${btn.dataset.id}`);
+      const row = $g(`notas-row-${btn.dataset.id}`);
       if (row) row.style.display = row.style.display === 'none' ? '' : 'none';
     });
 }
 
-document.getElementById('search-input').oninput = renderLeads;
+$g('search-input').oninput = renderLeads;
 document.querySelectorAll('.filter-btn').forEach(btn => {
   btn.onclick = () => {
     document.querySelectorAll('.filter-btn').forEach(b => b.classList.remove('active'));
@@ -4476,7 +4287,7 @@ async function handleAI(id) {
   if (!lead) return;
 
   // Toggle if already shown
-  const existingRow = document.getElementById(`summary-row-${id}`);
+  const existingRow = $g(`summary-row-${id}`);
   if (existingRow) {
     existingRow.style.display = existingRow.style.display === 'none' ? '' : 'none';
     return;
@@ -4536,7 +4347,7 @@ Responde en HTML con etiquetas <p> y <b>. Sé conciso y práctico. Usa emojis.`;
     lead.aiSummary = data.content[0].text;
     renderLeads();
     // Auto-show the summary
-    const row = document.getElementById(`summary-row-${id}`);
+    const row = $g(`summary-row-${id}`);
     if (row) row.style.display = '';
   } catch (err) {
     btn.disabled = false;
@@ -4671,16 +4482,16 @@ $g('save-lf').onclick = () => {
   renderLeads();
   renderCalendar();
   // Refrescar botón "Agendado" en la tarjeta de acciones si está visible
-  if (document.getElementById('panel-acciones').classList.contains('active')) {
+  if ($g('panel-acciones').classList.contains('active')) {
     renderAccionCard();
   }
 };
 ['close-lf','close-lf2'].forEach(id => {
-  document.getElementById(id).onclick = () => closeModal('modal-lead-followup');
+  $g(id).onclick = () => closeModal('modal-lead-followup');
 });
 
 // Calendar "add" button
-document.getElementById('save-followup').onclick = () => {
+$g('save-followup').onclick = () => {
   const cliente = $g('fu-cliente').value.trim();
   const fecha   = $g('fu-fecha').value;
   if (!cliente || !fecha) return alert('Completa el nombre y la fecha.');
@@ -4697,11 +4508,11 @@ document.getElementById('save-followup').onclick = () => {
   renderCalendar();
 };
 ['close-followup','close-followup2'].forEach(id => {
-  document.getElementById(id).onclick = () => closeModal('modal-followup');
+  $g(id).onclick = () => closeModal('modal-followup');
 });
 
 // View followup modal
-document.getElementById('vf-delete').onclick = () => {
+$g('vf-delete').onclick = () => {
   if (viewingFollowupIdx === null) return;
   followups = followups.filter(f => f.id !== viewingFollowupIdx);
   saveFollowups();
@@ -4710,7 +4521,7 @@ document.getElementById('vf-delete').onclick = () => {
   renderCalendar();
 };
 ['close-view-followup','close-view-followup2'].forEach(id => {
-  document.getElementById(id).onclick = () => closeModal('modal-view-followup');
+  $g(id).onclick = () => closeModal('modal-view-followup');
 });
 
 // ════════════════════════════════════════════════════
@@ -4763,10 +4574,10 @@ $g('cn-next').onclick = () => {
   if (accionIdx < activas.length - 1) { accionIdx++; renderAccionCard(); }
 };
 
-document.getElementById('cb-omitir').onclick    = () => procesarAccion('omitida');
-document.getElementById('cb-hecho').onclick    = () => procesarAccion('hecha');
-document.getElementById('cb-nota').onclick     = () => abrirModalNota();
-document.getElementById('cb-descartar').onclick = () => {
+$g('cb-omitir').onclick    = () => procesarAccion('omitida');
+$g('cb-hecho').onclick    = () => procesarAccion('hecha');
+$g('cb-nota').onclick     = () => abrirModalNota();
+$g('cb-descartar').onclick = () => {
   const ac = getAccionActiva();
   if (!ac) return;
   if (!confirm(`¿Descartar a ${ac.cliente} definitivamente? No aparecerá en futuros análisis.`)) return;
@@ -4779,7 +4590,7 @@ document.getElementById('cb-descartar').onclick = () => {
   if (lead) { lead.estado = 'descartado-manual'; }
   procesarAccion('descartada');
 };
-document.getElementById('cb-followup').onclick = () => {
+$g('cb-followup').onclick = () => {
   const ac = getAccionActiva();
   if (!ac) return;
   const lead = leads.find(l => l.nombre === ac.cliente);
@@ -4795,9 +4606,9 @@ document.getElementById('cb-followup').onclick = () => {
 };
 
 ['close-nota-ia','close-nota-ia2'].forEach(id =>
-  document.getElementById(id).onclick = () => closeModal('modal-nota-ia'));
+  $g(id).onclick = () => closeModal('modal-nota-ia'));
 
-document.getElementById('save-nota-ia').onclick = () => {
+$g('save-nota-ia').onclick = () => {
   const texto     = $g('nota-ia-texto').value.trim();
   const resultado = $g('nota-ia-resultado').value;
   if (accionPendiente !== null && accionesList[accionPendiente]) {
@@ -5292,7 +5103,7 @@ function checkBriefing() {
   if (!fuHoy.length && !fuVencidos.length) return; // nada que mostrar
 
   renderBriefing(fuHoy, fuVencidos);
-  document.getElementById('briefing-overlay').classList.add('open');
+  $g('briefing-overlay').classList.add('open');
 }
 
 function renderBriefing(fuHoy, fuVencidos) {
@@ -5334,11 +5145,11 @@ function renderBriefing(fuHoy, fuVencidos) {
 
 $g('btn-briefing-cerrar').onclick = () => {
   localStorage.setItem('mf_briefing_seen', dateToStr(TODAY));
-  document.getElementById('briefing-overlay').classList.remove('open');
+  $g('briefing-overlay').classList.remove('open');
 };
 $g('btn-briefing-empezar').onclick = () => {
   localStorage.setItem('mf_briefing_seen', dateToStr(TODAY));
-  document.getElementById('briefing-overlay').classList.remove('open');
+  $g('briefing-overlay').classList.remove('open');
   // Ir a la pestaña de Acciones IA
   // Navigate to CRM tab first
   showTab('crm');
@@ -5347,7 +5158,7 @@ $g('btn-briefing-empezar').onclick = () => {
   document.querySelectorAll('#tab-crm .tab-panel').forEach(p => p.classList.remove('active'));
   const crmAccionesTab = document.querySelector('.crm-subtab[data-tab="acciones"]');
   if (crmAccionesTab) crmAccionesTab.classList.add('active');
-  const panelAcciones = document.getElementById('panel-acciones');
+  const panelAcciones = $g('panel-acciones');
   if (panelAcciones) panelAcciones.classList.add('active');
   initAccionesPanel();
 };
@@ -5360,12 +5171,12 @@ function tryBriefing() {
 
 // ════════════════════════════════════════════════════
 // CALENDAR
-document.getElementById('cal-prev').onclick = () => {
+$g('cal-prev').onclick = () => {
   calMonth--;
   if (calMonth < 0) { calMonth = 11; calYear--; }
   renderCalendar();
 };
-document.getElementById('cal-next').onclick = () => {
+$g('cal-next').onclick = () => {
   calMonth++;
   if (calMonth > 11) { calMonth = 0; calYear++; }
   renderCalendar();
@@ -5679,7 +5490,7 @@ $g('minical-next').onclick = () => {
 // HELPERS
 // ════════════════════════════════════════════════════
 function openModal(id)  {
-  const el = document.getElementById(id);
+  const el = $g(id);
   if (!el) return;
   el.classList.add('open');
   document.body.classList.add('modal-open');
@@ -5687,11 +5498,11 @@ function openModal(id)  {
 function closeModal(id) {
   // Sin argumento → cerrar modal Nissan (modal-root)
   if (!id) {
-    document.getElementById('modal-root').innerHTML = '';
+    $g('modal-root').innerHTML = '';
     document.body.classList.remove('modal-open');
     return;
   }
-  const el = document.getElementById(id);
+  const el = $g(id);
   if (!el) return;
   el.classList.remove('open');
   el.style.display = '';
@@ -5710,7 +5521,7 @@ document.querySelectorAll('.modal-overlay').forEach(overlay => {
 });
 
 // Initial calendar render — only if panel is visible
-if (document.getElementById('panel-calendar').classList.contains('active')) {
+if (document.getElementById('panel-calendar') && document.getElementById('panel-calendar').classList.contains('active')) {
   renderCalendar();
 }
 
