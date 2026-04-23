@@ -2128,7 +2128,7 @@ function renderDashboard(){
         }
 
         // Próximamente: nuevos coches que van llegando
-        var prox = STOCK.filter(function(v){ return v.tipo === 'Próximamente'; }).slice(0,6);
+        var prox = STOCK.filter(function(v){ return v.tipo === 'Próximamente'; });
         if(prox.length > 0){
           html += '<div style="margin-bottom:16px">'
             +'<div style="font-size:11px;font-weight:700;color:rgba(99,102,241,.9);text-transform:uppercase;letter-spacing:1px;margin-bottom:10px">Próximamente ('+prox.length+')</div>'
@@ -2310,9 +2310,16 @@ function renderStockGrid(){
   const cnt=document.getElementById('stock-count');
   if(cnt) cnt.textContent=result.length+' de '+STOCK.length+' vehículos';
   const grid=document.getElementById('stock-grid');
-  if(grid) grid.innerHTML=result.length
-    ?'<div class="grid-auto">'+result.map(function(v){ return vcardHtml(v, true); }).join('')+'</div>'
-    :'<div class="card empty" style="padding:36px"><div style="font-size:36px;margin-bottom:8px"></div>Sin resultados<br><button class="btn sec" style="margin-top:14px;font-size:12px" onclick="stockFiltros={busqueda:\'\',modelos:new Set(),cambio:\'\',orden:\'\',estado:\'\'};renderStock()">Limpiar filtros</button></div>';
+  if(grid) {
+    try {
+      grid.innerHTML=result.length
+        ?'<div class="grid-auto">'+result.map(function(v){ try { return vcardHtml(v, true); } catch(e) { console.error('Error en vcard:', v.matricula, e); return ''; } }).join('')+'</div>'
+        :'<div class="card empty" style="padding:36px"><div style="font-size:36px;margin-bottom:8px"></div>Sin resultados<br><button class="btn sec" style="margin-top:14px;font-size:12px" onclick="stockFiltros={busqueda:\'\',modelos:new Set(),cambio:\'\',orden:\'\',estado:\'\'};renderStock()">Limpiar filtros</button></div>';
+    } catch(e) {
+      console.error('Error renderStockGrid:', e);
+      grid.innerHTML='<div class="card" style="padding:20px;color:#ff3b30">Error al renderizar stock: '+e.message+'</div>';
+    }
+  }
 }
 
 // €€ ALERTAS €€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€€
