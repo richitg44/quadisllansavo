@@ -2248,10 +2248,10 @@ function renderStockGrid(){
   // Chips
   const chipsZone=document.getElementById('modelo-chips');
   if(chipsZone){
-    const todosModelos=[...new Set(STOCK.map(function(v){return v.modelo;}).filter(Boolean))].sort();
+    const todosModelos=[...new Set(STOCK.map(function(v){return String(v.modelo||'');}).filter(Boolean))].sort();
     chipsZone.innerHTML=todosModelos.map(function(m){
       const on=modelos.has(m);
-      return '<span data-m="'+m.replace(/"/g,'&quot;')+'" onclick="togModeloFiltro(this.dataset.m)" style="display:inline-flex;align-items:center;padding:4px 11px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:2px;transition:all .15s;border:1px solid '+(on?'var(--red)':'var(--border)')+';background:'+(on?'rgba(195,0,47,.18)':'var(--border)')+';color:'+(on?'var(--red)':'var(--muted)')+'">'+m+'</span>';
+      return '<span data-m="'+String(m).replace(/"/g,'&quot;')+'" onclick="togModeloFiltro(this.dataset.m)" style="display:inline-flex;align-items:center;padding:4px 11px;border-radius:20px;font-size:12px;font-weight:500;cursor:pointer;margin-bottom:2px;transition:all .15s;border:1px solid '+(on?'var(--red)':'var(--border)')+';background:'+(on?'rgba(195,0,47,.18)':'var(--border)')+';color:'+(on?'var(--red)':'var(--muted)')+'">'+m+'</span>';
     }).join('');
   }
   const mc=document.getElementById('mod-count');
