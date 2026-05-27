@@ -909,16 +909,9 @@ function actualizarFotosStock() {
   var COL_MOD   = COLS_STOCK.indexOf('modelo')  + 1;
   var COL_VER   = COLS_STOCK.indexOf('version') + 1;
 
-  // Debug: mostrar primeras claves de byKey y del Excel
-  var excelSample = [];
-  for (var ii = 1; ii < rows.length && excelSample.length < 3; ii++) {
-    var mo = String(rows[ii][COL_MOD-1]||'').trim();
-    var ve = String(rows[ii][COL_VER-1]||'').trim();
-    if (mo) excelSample.push(excelToMatchKey(mo, ve));
-  }
-  Logger.log('Ej claves byKey: '   + JSON.stringify(Object.keys(byKey).slice(0,3)));
-  Logger.log('Ej claves Excel: '   + JSON.stringify(excelSample));
+  Logger.log('Todas claves byKey: ' + JSON.stringify(Object.keys(byKey)));
 
+  var noMatch = []; // debug: claves Excel que no encuentran foto
   for (var i = 1; i < rows.length; i++) {
     var vsb     = String(rows[i][COL_VSB - 1] || '').trim();
     var modelo  = String(rows[i][COL_MOD - 1] || '').trim();
@@ -935,8 +928,10 @@ function actualizarFotosStock() {
       updated++;
     } else {
       sinFoto++;
+      if (noMatch.length < 10) noMatch.push({ modelo: modelo, clave: ek, ver: version.substring(0,60) });
     }
   }
+  Logger.log('Sin foto (10 ej): ' + JSON.stringify(noMatch));
 
   Logger.log('Fotos actualizadas: ' + updated + ' | Sin foto en web: ' + sinFoto);
   return { ok: true, updated: updated };
