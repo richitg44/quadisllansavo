@@ -869,6 +869,26 @@ function actualizarFotosStock() {
   return { ok: true, updated: updated };
 }
 
+// Ejecuta esto UNA VEZ para activar la actualización automática de fotos cada hora.
+// Selecciona esta función en el editor > Ejecutar
+function setupFotoSync() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'actualizarFotosStock') ScriptApp.deleteTrigger(t);
+  });
+  ScriptApp.newTrigger('actualizarFotosStock')
+    .timeBased()
+    .everyHours(1)
+    .create();
+  Logger.log('Trigger configurado: actualizar fotos cada hora');
+}
+
+function stopFotoSync() {
+  ScriptApp.getProjectTriggers().forEach(function(t) {
+    if (t.getHandlerFunction() === 'actualizarFotosStock') ScriptApp.deleteTrigger(t);
+  });
+  Logger.log('Sync de fotos detenido');
+}
+
 // Ejecuta esto UNA VEZ para activar el sync automático cada 10 minutos.
 // Selecciona esta función en el editor > Ejecutar
 function setupEmailSync() {
