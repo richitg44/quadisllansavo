@@ -734,17 +734,17 @@ function scrapeQuadisFotos() {
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
   // 1. Recopilar URLs de fichas desde las páginas del listado.
-  // Probamos dos formatos de paginación (/page/N/ y ?paged=N) y paramos
-  // cuando una página no aporta fichas nuevas (más robusto que buscar el enlace «siguiente»).
+  // Paramos solo cuando la página devuelve error HTTP (no existe),
+  // no cuando deja de haber URLs nuevas (evita paradas prematuras).
   var allVehicleUrls = [];
   var seenUrls = {};
-  for (var page = 1; page <= 20; page++) {
+  for (var page = 1; page <= 50; page++) {
     // Intentar los dos formatos de paginación más habituales en WordPress
     var urlsToTry = page === 1
       ? [baseUrl]
       : [baseUrl + 'page/' + page + '/', baseUrl + '?paged=' + page];
 
-    var foundAny = false;
+    var pageOk = false;
     for (var ti = 0; ti < urlsToTry.length; ti++) {
       try {
         var res = UrlFetchApp.fetch(urlsToTry[ti], { muteHttpExceptions: true, followRedirects: true });
@@ -771,18 +771,16 @@ function scrapeQuadisFotos() {
           }
         }
 
-        if (allVehicleUrls.length > countBefore) {
-          foundAny = true;
-          Logger.log('Página ' + page + ' (' + urlsToTry[ti] + '): ' + (allVehicleUrls.length - countBefore) + ' fichas nuevas');
-          break; // formato correcto encontrado, no hace falta probar el otro
-        }
+        pageOk = true;
+        Logger.log('Página ' + page + ': ' + (allVehicleUrls.length - countBefore) + ' fichas nuevas (total: ' + allVehicleUrls.length + ')');
+        break;
       } catch(e) {
         Logger.log('Error listado página ' + page + ' (' + urlsToTry[ti] + '): ' + e.message);
       }
     }
 
-    // Si ningún formato de la página N aportó fichas nuevas, hemos llegado al final
-    if (!foundAny && page > 1) break;
+    // Parar solo si ningún formato de esta página devolvió 200
+    if (!pageOk) break;
   }
 
   Logger.log('Fichas a procesar: ' + allVehicleUrls.length);
