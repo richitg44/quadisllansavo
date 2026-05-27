@@ -883,6 +883,18 @@ function actualizarFotosStock() {
   var COL_MOD   = COLS_STOCK.indexOf('modelo')  + 1;
   var COL_VER   = COLS_STOCK.indexOf('version') + 1;
 
+  // Debug: mostrar primeras claves de byName y del Excel para detectar el desfase
+  var nameKeys = Object.keys(byName).slice(0, 5);
+  Logger.log('Ejemplo claves byName: ' + JSON.stringify(nameKeys));
+  var excelKeys = [];
+  for (var ii = 1; ii < rows.length && excelKeys.length < 5; ii++) {
+    var dm = String(rows[ii][COL_MARCA-1]||'').trim();
+    var mo = String(rows[ii][COL_MOD-1]||'').trim();
+    var ve = String(rows[ii][COL_VER-1]||'').trim();
+    if (dm) excelKeys.push(normKey(dm + ' ' + mo + ' ' + ve));
+  }
+  Logger.log('Ejemplo claves Excel: ' + JSON.stringify(excelKeys));
+
   for (var i = 1; i < rows.length; i++) {
     var vsb     = String(rows[i][COL_VSB   - 1] || '').trim();
     var marca   = String(rows[i][COL_MARCA - 1] || '').trim();
