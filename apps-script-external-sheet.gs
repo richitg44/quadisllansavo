@@ -733,40 +733,56 @@ function scrapeQuadisFotos() {
   var acum = {}; // { vsb: { url: true } }
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
-  // 1. Recopilar URLs de fichas desde las páginas del listado
+  // 1. Recopilar URLs de fichas desde las páginas del listado.
+  // Probamos dos formatos de paginación (/page/N/ y ?paged=N) y paramos
+  // cuando una página no aporta fichas nuevas (más robusto que buscar el enlace «siguiente»).
   var allVehicleUrls = [];
   var seenUrls = {};
-  for (var page = 1; page <= 15; page++) {
-    var listUrl = page === 1 ? baseUrl : baseUrl + 'page/' + page + '/';
-    try {
-      var res = UrlFetchApp.fetch(listUrl, { muteHttpExceptions: true, followRedirects: true });
-      if (res.getResponseCode() !== 200) break;
-      var html = res.getContentText();
+  for (var page = 1; page <= 20; page++) {
+    // Intentar los dos formatos de paginación más habituales en WordPress
+    var urlsToTry = page === 1
+      ? [baseUrl]
+      : [baseUrl + 'page/' + page + '/', baseUrl + '?paged=' + page];
 
-      // Acumular fotos que ya aparezcan en el listado (miniaturas)
-      acumularFotos(html, acum);
+    var foundAny = false;
+    for (var ti = 0; ti < urlsToTry.length; ti++) {
+      try {
+        var res = UrlFetchApp.fetch(urlsToTry[ti], { muteHttpExceptions: true, followRedirects: true });
+        if (res.getResponseCode() !== 200) continue;
+        var html = res.getContentText();
 
-      // Extraer URLs de fichas: data-url="..." y href="..."
-      var linkPatterns = [
-        /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
-        /href="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"#?]+)"/g
-      ];
-      for (var pi = 0; pi < linkPatterns.length; pi++) {
-        var match;
-        while ((match = linkPatterns[pi].exec(html)) !== null) {
-          var u = match[1].replace(/\/$/, '') + '/';
-          if (!seenUrls[u] && u !== baseUrl && u.indexOf('/page/') < 0) {
-            seenUrls[u] = true;
-            allVehicleUrls.push(u);
+        // Acumular fotos que ya aparezcan en el listado (miniaturas)
+        acumularFotos(html, acum);
+
+        // Extraer URLs de fichas: data-url="..." y href="..."
+        var countBefore = allVehicleUrls.length;
+        var linkPatterns = [
+          /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
+          /href="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"#?]+)"/g
+        ];
+        for (var pi = 0; pi < linkPatterns.length; pi++) {
+          var match;
+          while ((match = linkPatterns[pi].exec(html)) !== null) {
+            var u = match[1].replace(/\/$/, '') + '/';
+            if (!seenUrls[u] && u !== baseUrl && u.indexOf('/page/') < 0) {
+              seenUrls[u] = true;
+              allVehicleUrls.push(u);
+            }
           }
         }
-      }
 
-      if (html.indexOf('/page/' + (page + 1) + '/') < 0) break;
-    } catch(e) {
-      Logger.log('Error listado página ' + page + ': ' + e.message);
-      break;
+        if (allVehicleUrls.length > countBefore) {
+          foundAny = true;
+          Logger.log('Página ' + page + ' (' + urlsToTry[ti] + '): ' + (allVehicleUrls.length - countBefore) + ' fichas nuevas');
+          break; // formato correcto encontrado, no hace falta probar el otro
+        }
+      } catch(e) {
+        Logger.log('Error listado página ' + page + ' (' + urlsToTry[ti] + '): ' + e.message);
+      }
     }
+
+    // Si ningún formato de la página N aportó fichas nuevas, hemos llegado al final
+    if (!foundAny && page > 1) break;
   }
 
   Logger.log('Fichas a procesar: ' + allVehicleUrls.length);
