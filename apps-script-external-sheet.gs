@@ -734,27 +734,25 @@ function scrapeQuadisFotos() {
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
   // 1. Recopilar URLs de fichas desde las páginas del listado.
-  // Paramos solo cuando la página devuelve error HTTP (no existe),
-  // no cuando deja de haber URLs nuevas (evita paradas prematuras).
+  // Para cuando una página no aporta URLs nuevas: WordPress redirige las
+  // páginas inexistentes a la página 1 (HTTP 200), así que no podemos
+  // fiarnos del código de respuesta para detectar el final.
   var allVehicleUrls = [];
   var seenUrls = {};
-  for (var page = 1; page <= 50; page++) {
-    // Intentar los dos formatos de paginación más habituales en WordPress
+  for (var page = 1; page <= 30; page++) {
     var urlsToTry = page === 1
       ? [baseUrl]
       : [baseUrl + 'page/' + page + '/', baseUrl + '?paged=' + page];
 
-    var pageOk = false;
+    var foundAny = false;
     for (var ti = 0; ti < urlsToTry.length; ti++) {
       try {
         var res = UrlFetchApp.fetch(urlsToTry[ti], { muteHttpExceptions: true, followRedirects: true });
         if (res.getResponseCode() !== 200) continue;
         var html = res.getContentText();
 
-        // Acumular fotos que ya aparezcan en el listado (miniaturas)
         acumularFotos(html, acum);
 
-        // Extraer URLs de fichas: data-url="..." y href="..."
         var countBefore = allVehicleUrls.length;
         var linkPatterns = [
           /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
@@ -771,16 +769,20 @@ function scrapeQuadisFotos() {
           }
         }
 
-        pageOk = true;
-        Logger.log('Página ' + page + ': ' + (allVehicleUrls.length - countBefore) + ' fichas nuevas (total: ' + allVehicleUrls.length + ')');
-        break;
+        if (allVehicleUrls.length > countBefore) {
+          foundAny = true;
+          Logger.log('Página ' + page + ': ' + (allVehicleUrls.length - countBefore) + ' fichas nuevas (total: ' + allVehicleUrls.length + ')');
+          break;
+        }
       } catch(e) {
-        Logger.log('Error listado página ' + page + ' (' + urlsToTry[ti] + '): ' + e.message);
+        Logger.log('Error listado página ' + page + ': ' + e.message);
       }
     }
 
-    // Parar solo si ningún formato de esta página devolvió 200
-    if (!pageOk) break;
+    if (!foundAny) {
+      Logger.log('Página ' + page + ': sin fichas nuevas, fin del catálogo');
+      break;
+    }
   }
 
   Logger.log('Fichas a procesar: ' + allVehicleUrls.length);
