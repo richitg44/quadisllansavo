@@ -678,8 +678,13 @@ function syncFromEmail() {
       var fotoMap = scrapeQuadisFotos();
       if (fotoMap) {
         mapped.forEach(function(v) {
-          if (v.vsb && fotoMap[v.vsb]) {
-            v.foto = fotoMap[v.vsb];
+          // Normalizar VSB: aceptar "24213" y "U20_24213" apuntando al mismo mapa
+          var vsbKey = v.vsb || '';
+          var vsbNum = vsbKey.match(/U\d+_(\d+)/) ? vsbKey.match(/U\d+_(\d+)/)[1] : vsbKey;
+          if (fotoMap[vsbKey]) {
+            v.foto = fotoMap[vsbKey];
+          } else if (vsbNum && fotoMap[vsbNum]) {
+            v.foto = fotoMap[vsbNum];
           }
         });
         Logger.log('Fotos asignadas: ' + mapped.filter(function(v){return v.foto && v.foto.indexOf('http')===0;}).length);
@@ -703,16 +708,32 @@ function syncFromEmail() {
   }
 }
 
-// ── SCRAPING FOTOS DE QUADISLLANSA.ES ──────────────────────────────
-// Recorre las páginas del listado de vehículos, entra en cada ficha,
-// extrae el VSB y la URL de la primera foto.
-// Devuelve un mapa: { "24213": "https://quadis.s3.amazonaws.com/...", ... }
+// ── SCRAPING FOTOS DE QUADISLLANSA.ES ────────────────────────────────
+// Estrategia: extraer el VSB directamente de la ruta S3 (U{n}_{vsb}/)
+// para evitar depender de patrones HTML frágiles.
+// Devuelve { "24213": "https://...foto1.jpg|https://...foto2.jpg", ... }
+
+// Regex que captura cualquier endpoint S3 de quadis y extrae el VSB de la ruta.
+// Ejemplo de URL: https://quadis.s3.amazonaws.com/GestorQuadis/Vehiculos/U20_24213/foto.jpg
+//             o: https://quadis.s3.eu-west-1.amazonaws.com/GestorQuadis/Vehiculos/U20_24213/foto.jpg
+var S3_FOTO_RE = /https:\/\/quadis\.s3[^"'\s>]*\.amazonaws\.com\/GestorQuadis\/Vehiculos\/U\d+_(\d+)\/[^"'\s>]+/g;
+
+function acumularFotos(html, acum) {
+  var re = new RegExp(S3_FOTO_RE.source, 'g');
+  var m;
+  while ((m = re.exec(html)) !== null) {
+    var vsb = m[1];
+    var url = m[0].replace(/[.,;)>\]]+$/, ''); // limpiar basura al final
+    if (!acum[vsb]) acum[vsb] = {};
+    acum[vsb][url] = true;
+  }
+}
 
 function scrapeQuadisFotos() {
-  var fotoMap = {};
+  var acum = {}; // { vsb: { url: true } }
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
-  // 1. Recorrer todas las páginas del listado
+  // 1. Recopilar URLs de fichas desde las páginas del listado
   var allVehicleUrls = [];
   var seenUrls = {};
   for (var page = 1; page <= 15; page++) {
@@ -722,16 +743,18 @@ function scrapeQuadisFotos() {
       if (res.getResponseCode() !== 200) break;
       var html = res.getContentText();
 
-      // Múltiples patrones para capturar URLs de fichas individuales
-      var patterns = [
+      // Acumular fotos que ya aparezcan en el listado (miniaturas)
+      acumularFotos(html, acum);
+
+      // Extraer URLs de fichas: data-url="..." y href="..."
+      var linkPatterns = [
         /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
         /href="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"#?]+)"/g
       ];
-      for (var pi = 0; pi < patterns.length; pi++) {
+      for (var pi = 0; pi < linkPatterns.length; pi++) {
         var match;
-        while ((match = patterns[pi].exec(html)) !== null) {
+        while ((match = linkPatterns[pi].exec(html)) !== null) {
           var u = match[1].replace(/\/$/, '') + '/';
-          // Descartar URLs de paginación o de la raíz del listado
           if (!seenUrls[u] && u !== baseUrl && u.indexOf('/page/') < 0) {
             seenUrls[u] = true;
             allVehicleUrls.push(u);
@@ -739,7 +762,6 @@ function scrapeQuadisFotos() {
         }
       }
 
-      // Si no hay link a página siguiente, salir
       if (html.indexOf('/page/' + (page + 1) + '/') < 0) break;
     } catch(e) {
       Logger.log('Error listado página ' + page + ': ' + e.message);
@@ -747,55 +769,28 @@ function scrapeQuadisFotos() {
     }
   }
 
-  Logger.log('Vehículos encontrados en web: ' + allVehicleUrls.length);
+  Logger.log('Fichas a procesar: ' + allVehicleUrls.length);
 
-  // 2. Recorrer cada ficha para extraer VSB y fotos
+  // 2. Entrar en cada ficha y acumular todas sus fotos S3
   for (var i = 0; i < allVehicleUrls.length; i++) {
     try {
       var detRes = UrlFetchApp.fetch(allVehicleUrls[i], { muteHttpExceptions: true });
       if (detRes.getResponseCode() !== 200) continue;
-      var detHtml = detRes.getContentText();
-
-      // Extraer VSB: buscar patrón U20_XXXXX o variantes
-      var vsb = null;
-      var vsbPatterns = [/U\d+_(\d+)/, /"vsb"\s*:\s*"?(\d+)"?/i, /[?&]vsb[=:](\d+)/i];
-      for (var vp = 0; vp < vsbPatterns.length; vp++) {
-        var vm = detHtml.match(vsbPatterns[vp]);
-        if (vm) { vsb = vm[1]; break; }
-      }
-      if (!vsb) continue;
-
-      var allFotos = detHtml.match(/https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^"'\s>]+/g);
-      if (!allFotos) continue;
-
-      // Filtrar por VSB en la ruta S3 (el directorio del vehículo contiene el VSB)
-      var seen = {};
-      var vsbFotos = [];
-      var allUnique = [];
-      for (var f = 0; f < allFotos.length; f++) {
-        var url = allFotos[f];
-        if (seen[url]) continue;
-        seen[url] = true;
-        allUnique.push(url);
-        if (url.indexOf('_' + vsb + '/') >= 0 || url.indexOf('/' + vsb + '/') >= 0) {
-          vsbFotos.push(url);
-        }
-      }
-
-      // Usar fotos filtradas por VSB; si ninguna coincide, usar todas las únicas de la página
-      var finalFotos = vsbFotos.length > 0 ? vsbFotos : allUnique;
-      if (finalFotos.length > 0) {
-        fotoMap[vsb] = finalFotos.join('|');
-      }
+      acumularFotos(detRes.getContentText(), acum);
     } catch(e) {
       Logger.log('Error ficha ' + allVehicleUrls[i] + ': ' + e.message);
     }
-
-    // Pausa pequeña para no sobrecargar el servidor
     if (i % 10 === 9) Utilities.sleep(1000);
   }
 
-  Logger.log('VSB → Foto mapeados: ' + Object.keys(fotoMap).length);
+  // 3. Convertir el acumulador en fotoMap con URLs separadas por |
+  var fotoMap = {};
+  for (var vsb in acum) {
+    var urls = Object.keys(acum[vsb]);
+    if (urls.length > 0) fotoMap[vsb] = urls.join('|');
+  }
+
+  Logger.log('VSB → Fotos mapeados: ' + Object.keys(fotoMap).length);
   return fotoMap;
 }
 
