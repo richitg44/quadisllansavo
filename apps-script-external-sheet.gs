@@ -713,10 +713,10 @@ function syncFromEmail() {
 // para evitar depender de patrones HTML frágiles.
 // Devuelve { "24213": "https://...foto1.jpg|https://...foto2.jpg", ... }
 
-// Regex que captura cualquier endpoint S3 de quadis y extrae el VSB de la ruta.
-// Ejemplo de URL: https://quadis.s3.amazonaws.com/GestorQuadis/Vehiculos/U20_24213/foto.jpg
-//             o: https://quadis.s3.eu-west-1.amazonaws.com/GestorQuadis/Vehiculos/U20_24213/foto.jpg
-var S3_FOTO_RE = /https:\/\/quadis\.s3[^"'\s>]*\.amazonaws\.com\/GestorQuadis\/Vehiculos\/U\d+_(\d+)\/[^"'\s>]+/g;
+// Regex que extrae el VSB del número al final del nombre de carpeta S3.
+// Formato real: /GestorQuadis/Vehiculos/Nissan_Juke_DIG-T%20..._513964/e01jpg-1.jpg
+//                                                                 ^^^^^^ VSB
+var S3_FOTO_RE = /https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^\/]+_(\d{4,})\/[^"'\s>]+/g;
 
 function acumularFotos(html, acum) {
   var re = new RegExp(S3_FOTO_RE.source, 'g');
