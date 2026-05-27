@@ -68,6 +68,7 @@ function dispatch(action, body) {
     else if (action === "updateClienteMeta")  return updateClienteMeta(body.data);
     else if (action === "getExternalStock")   return getExternalStock(body.sheetId);
     else if (action === "syncEmail")          return syncFromEmail();
+    else if (action === "actualizarFotos")    return actualizarFotosStock();
     else return { error: "Acción desconocida: " + action };
   } catch(err) { return { error: err.message }; }
 }
@@ -713,10 +714,10 @@ function syncFromEmail() {
 // para evitar depender de patrones HTML frágiles.
 // Devuelve { "24213": "https://...foto1.jpg|https://...foto2.jpg", ... }
 
-// Regex que captura cualquier endpoint S3 de quadis y extrae el VSB de la ruta.
-// Ejemplo de URL: https://quadis.s3.amazonaws.com/GestorQuadis/Vehiculos/U20_24213/foto.jpg
-//             o: https://quadis.s3.eu-west-1.amazonaws.com/GestorQuadis/Vehiculos/U20_24213/foto.jpg
-var S3_FOTO_RE = /https:\/\/quadis\.s3[^"'\s>]*\.amazonaws\.com\/GestorQuadis\/Vehiculos\/U\d+_(\d+)\/[^"'\s>]+/g;
+// Regex que extrae el VSB del número al final del nombre de carpeta S3.
+// Formato real: /GestorQuadis/Vehiculos/Nissan_Juke_DIG-T%20..._513964/e01jpg-1.jpg
+//                                                                 ^^^^^^ VSB
+var S3_FOTO_RE = /https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^\/]+_(\d{4,})\/[^"'\s>]+/g;
 
 function acumularFotos(html, acum) {
   var re = new RegExp(S3_FOTO_RE.source, 'g');
@@ -733,39 +734,54 @@ function scrapeQuadisFotos() {
   var acum = {}; // { vsb: { url: true } }
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
-  // 1. Recopilar URLs de fichas desde las páginas del listado
+  // 1. Recopilar URLs de fichas. Para tras 3 páginas consecutivas sin añadir
+  // ninguna URL nueva al listado global (cubre redireciones WordPress y fin real).
   var allVehicleUrls = [];
   var seenUrls = {};
-  for (var page = 1; page <= 15; page++) {
-    var listUrl = page === 1 ? baseUrl : baseUrl + 'page/' + page + '/';
-    try {
-      var res = UrlFetchApp.fetch(listUrl, { muteHttpExceptions: true, followRedirects: true });
-      if (res.getResponseCode() !== 200) break;
-      var html = res.getContentText();
+  var consecutiveEmpty = 0;
 
-      // Acumular fotos que ya aparezcan en el listado (miniaturas)
-      acumularFotos(html, acum);
+  for (var page = 1; page <= 50; page++) {
+    var urlsToTry = page === 1
+      ? [baseUrl]
+      : [baseUrl + 'page/' + page + '/', baseUrl + '?paged=' + page];
 
-      // Extraer URLs de fichas: data-url="..." y href="..."
-      var linkPatterns = [
-        /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
-        /href="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"#?]+)"/g
-      ];
-      for (var pi = 0; pi < linkPatterns.length; pi++) {
-        var match;
-        while ((match = linkPatterns[pi].exec(html)) !== null) {
-          var u = match[1].replace(/\/$/, '') + '/';
-          if (!seenUrls[u] && u !== baseUrl && u.indexOf('/page/') < 0) {
-            seenUrls[u] = true;
-            allVehicleUrls.push(u);
+    var newThisPage = 0;
+    for (var ti = 0; ti < urlsToTry.length; ti++) {
+      try {
+        var res = UrlFetchApp.fetch(urlsToTry[ti], { muteHttpExceptions: true, followRedirects: true });
+        if (res.getResponseCode() !== 200) continue;
+        var html = res.getContentText();
+
+        acumularFotos(html, acum);
+
+        var linkPatterns = [
+          /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
+          /href="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"#?]+)"/g
+        ];
+        for (var pi = 0; pi < linkPatterns.length; pi++) {
+          var match;
+          while ((match = linkPatterns[pi].exec(html)) !== null) {
+            var u = match[1].replace(/\/$/, '') + '/';
+            if (u !== baseUrl && u.indexOf('/page/') < 0 && !seenUrls[u]) {
+              seenUrls[u] = true;
+              allVehicleUrls.push(u);
+              newThisPage++;
+            }
           }
         }
+        break; // formato correcto respondió con 200, no probar el otro
+      } catch(e) {
+        Logger.log('Error listado página ' + page + ': ' + e.message);
       }
+    }
 
-      if (html.indexOf('/page/' + (page + 1) + '/') < 0) break;
-    } catch(e) {
-      Logger.log('Error listado página ' + page + ': ' + e.message);
-      break;
+    if (newThisPage > 0) {
+      consecutiveEmpty = 0;
+      Logger.log('Página ' + page + ': ' + newThisPage + ' nuevas (total: ' + allVehicleUrls.length + ')');
+    } else {
+      consecutiveEmpty++;
+      Logger.log('Página ' + page + ': 0 nuevas (' + consecutiveEmpty + '/3)');
+      if (consecutiveEmpty >= 3) break;
     }
   }
 
@@ -819,6 +835,38 @@ function uploadAndConvertExcel(blob) {
   });
 
   return JSON.parse(res.getContentText()).id;
+}
+
+// ── ACTUALIZAR FOTOS DEL STOCK EXISTENTE ─────────────────────────────
+// Ejecuta esto directamente desde el editor para refrescar las fotos
+// sin necesitar un email de sync. Solo toca la columna "foto".
+function actualizarFotosStock() {
+  var fotoMap = scrapeQuadisFotos();
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(HOJAS.stock);
+  var rows = sheet.getDataRange().getValues();
+  var updated = 0, sinVsb = 0, sinFoto = 0;
+
+  var COL_FOTO = COLS_STOCK.indexOf('foto') + 1; // columna 1-based
+  var COL_VSB  = COLS_STOCK.indexOf('vsb')  + 1;
+
+  for (var i = 1; i < rows.length; i++) {
+    var vsb = String(rows[i][COL_VSB - 1] || '').trim();
+    if (!vsb) { sinVsb++; continue; }
+
+    var vsbNum = vsb.match(/U\d+_(\d+)/) ? vsb.match(/U\d+_(\d+)/)[1] : vsb;
+    var foto = fotoMap[vsb] || fotoMap[vsbNum] || '';
+
+    if (foto) {
+      sheet.getRange(i + 1, COL_FOTO).setValue(foto);
+      updated++;
+    } else {
+      sinFoto++;
+    }
+  }
+
+  Logger.log('Fotos actualizadas: ' + updated + ' | Sin foto en web: ' + sinFoto + ' | Sin VSB: ' + sinVsb);
+  return { ok: true, updated: updated };
 }
 
 // Ejecuta esto UNA VEZ para activar el sync automático cada 10 minutos.
