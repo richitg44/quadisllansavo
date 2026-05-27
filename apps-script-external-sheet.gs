@@ -674,16 +674,16 @@ function syncFromEmail() {
       };
     });
 
-    // Buscar fotos reales en quadisllansa.es por nombre (marca+modelo+versión del folder S3)
+    // Buscar fotos reales en quadisllansa.es por modelo+potencia+CV
     try {
       var fotos = scrapeQuadisFotos();
-      var byVsb  = fotos.byVsb  || {};
-      var byName = fotos.byName || {};
+      var byVsb = fotos.byVsb || {};
+      var byKey = fotos.byKey || {};
       mapped.forEach(function(v) {
         var vsbKey = v.vsb || '';
         var vsbNum = vsbKey.match(/U\d+_(\d+)/) ? vsbKey.match(/U\d+_(\d+)/)[1] : vsbKey;
-        var nk = normKey((v.marca||'') + ' ' + (v.modelo||'') + ' ' + (v.version||''));
-        v.foto = byVsb[vsbKey] || byVsb[vsbNum] || byName[nk] || '';
+        var ek = excelToMatchKey(v.modelo || '', v.version || '');
+        v.foto = byVsb[vsbKey] || byVsb[vsbNum] || (ek && byKey[ek]) || '';
       });
       Logger.log('Fotos asignadas: ' + mapped.filter(function(v){return v.foto && v.foto.indexOf('http')===0;}).length);
     } catch(e) {
@@ -710,49 +710,76 @@ function syncFromEmail() {
 // para evitar depender de patrones HTML frágiles.
 // Devuelve { "24213": "https://...foto1.jpg|https://...foto2.jpg", ... }
 
-// Regex que extrae el VSB del número al final del nombre de carpeta S3.
-// Formato real: /GestorQuadis/Vehiculos/Nissan_Qashqai_DIG-T%20160%20..._515931/e01jpg-1.jpg
-// El número al final del folder (_515931) es un ID interno, NO el VSB del Excel.
-// Se usa el nombre del folder (marca_modelo_versión codificada) para casar con el Excel.
+// Matching strategy: modelo normalizado + potencia kW + CV
+// S3:    "Nissan_Juke_DIG-T%20Tekna%2084%20kW%20%28114%20CV%29_513964" → "juke_84_114"
+// Excel: modelo="New Juke", version="...84kw (114 cv)..."           → "juke_84_114"
 var S3_FOTO_RE = /https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^\/]+_(\d{4,})\/[^"'\s>]+/g;
 
-// Normaliza "Nissan_Qashqai_DIG-T%20160%20mHEV%20N-Connecta_515931" →
-// "nissan qashqai dig-t 160 mhev n-connecta"
 function normKey(s) {
   try { s = decodeURIComponent(s); } catch(e) {}
   return s.replace(/_/g, ' ').toLowerCase().replace(/\s+/g, ' ').trim();
 }
 
-// Extrae el nombre normalizado del folder S3 (sin el sufijo _INTERNALID).
-// Ejemplo: ".../Vehiculos/Nissan_Qashqai_DIG-T%20160_515931/e01.jpg"
-//          → "nissan qashqai dig-t 160"
-function folderNameFromUrl(url) {
-  var fm = url.match(/\/Vehiculos\/(.+)_\d{4,}\//);
-  return fm ? normKey(fm[1]) : null;
+// "84 kW" o "84kw" → "84"
+function extractPower(text) {
+  var m = text.match(/\b(\d{2,3})\s*kw\b/i);
+  return m ? m[1] : '';
 }
 
-function acumularFotos(html, acum, nameAcum) {
+// "(114 CV)" o "(114cv)" → "114"
+function extractCv(text) {
+  var m = text.match(/\((\d{2,3})\s*cv\)/i);
+  return m ? m[1] : '';
+}
+
+// Clave desde URL S3: extrae marca[1] + potencia + cv del folder
+// "/Vehiculos/Nissan_Juke_DIG-T%20..._84%20kW%20(114%20CV)_513964/" → "juke_84_114"
+function s3ToMatchKey(url) {
+  // Captura: brand / model / version+_internalId
+  var fm = url.match(/\/Vehiculos\/([^_\/]+)_([^_\/]+)_(.+)_\d{4,}\//);
+  if (!fm) return null;
+  var model       = normKey(fm[2]);
+  var versionText = normKey(fm[3]);
+  var power = extractPower(versionText);
+  var cv    = extractCv(versionText);
+  if (!model) return null;
+  return model + (power ? '_' + power : '') + (cv ? '_' + cv : '');
+}
+
+// Clave desde campos del Excel
+// modelo="New Juke", version="New Juke dig-t 84kw (114 cv)..." → "juke_84_114"
+function excelToMatchKey(modelo, version) {
+  var m = normKey(modelo || '').replace(/\bnew\b/g, '').replace(/\s+/g, ' ').trim();
+  var model = m.split(' ')[0];
+  var vText = normKey(version || '');
+  var power = extractPower(vText);
+  var cv    = extractCv(vText);
+  if (!model) return null;
+  return model + (power ? '_' + power : '') + (cv ? '_' + cv : '');
+}
+
+function acumularFotos(html, acum, keyAcum) {
   var re = new RegExp(S3_FOTO_RE.source, 'g');
   var m;
   while ((m = re.exec(html)) !== null) {
     var vsb = m[1];
-    var url = m[0].replace(/[.,;)>\]]+$/, ''); // limpiar basura al final
+    var url = m[0].replace(/[.,;)>\]]+$/, '');
     if (!acum[vsb]) acum[vsb] = {};
     acum[vsb][url] = true;
 
-    if (nameAcum) {
-      var nk = folderNameFromUrl(url);
-      if (nk) {
-        if (!nameAcum[nk]) nameAcum[nk] = {};
-        nameAcum[nk][url] = true;
+    if (keyAcum) {
+      var k = s3ToMatchKey(url);
+      if (k) {
+        if (!keyAcum[k]) keyAcum[k] = {};
+        keyAcum[k][url] = true;
       }
     }
   }
 }
 
 function scrapeQuadisFotos() {
-  var acum = {};     // { internalId: { url: true } }
-  var nameAcum = {}; // { "nissan qashqai dig-t 160 ...": { url: true } }
+  var acum    = {}; // { internalId: { url: true } }
+  var keyAcum = {}; // { "juke_84_114": { url: true } }
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
   // 1. Recopilar URLs de fichas. Para tras 3 páginas consecutivas sin añadir
@@ -773,7 +800,7 @@ function scrapeQuadisFotos() {
         if (res.getResponseCode() !== 200) continue;
         var html = res.getContentText();
 
-        acumularFotos(html, acum, nameAcum);
+        acumularFotos(html, acum, keyAcum);
 
         var linkPatterns = [
           /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
@@ -813,7 +840,7 @@ function scrapeQuadisFotos() {
     try {
       var detRes = UrlFetchApp.fetch(allVehicleUrls[i], { muteHttpExceptions: true });
       if (detRes.getResponseCode() !== 200) continue;
-      acumularFotos(detRes.getContentText(), acum, nameAcum);
+      acumularFotos(detRes.getContentText(), acum, keyAcum);
     } catch(e) {
       Logger.log('Error ficha ' + allVehicleUrls[i] + ': ' + e.message);
     }
@@ -827,14 +854,14 @@ function scrapeQuadisFotos() {
     if (urls.length > 0) byVsb[k] = urls.join('|');
   }
 
-  var byName = {};
-  for (var nk in nameAcum) {
-    var nurls = Object.keys(nameAcum[nk]);
-    if (nurls.length > 0) byName[nk] = nurls.join('|');
+  var byKey = {};
+  for (var k2 in keyAcum) {
+    var kurls = Object.keys(keyAcum[k2]);
+    if (kurls.length > 0) byKey[k2] = kurls.join('|');
   }
 
-  Logger.log('Nombre → Fotos mapeados: ' + Object.keys(byName).length);
-  return { byVsb: byVsb, byName: byName };
+  Logger.log('Clave → Fotos mapeados: ' + Object.keys(byKey).length + ' | Ej: ' + JSON.stringify(Object.keys(byKey).slice(0,3)));
+  return { byVsb: byVsb, byKey: byKey };
 }
 
 // Sube un blob Excel a Google Drive y lo convierte a Google Sheets.
@@ -868,9 +895,9 @@ function uploadAndConvertExcel(blob) {
 // Ejecuta esto directamente desde el editor para refrescar las fotos
 // sin necesitar un email de sync. Solo toca la columna "foto".
 function actualizarFotosStock() {
-  var fotos = scrapeQuadisFotos();
+  var fotos  = scrapeQuadisFotos();
   var byVsb  = fotos.byVsb  || {};
-  var byName = fotos.byName || {};
+  var byKey  = fotos.byKey  || {};
 
   var ss = SpreadsheetApp.openById(SHEET_ID);
   var sheet = ss.getSheetByName(HOJAS.stock);
@@ -879,31 +906,27 @@ function actualizarFotosStock() {
 
   var COL_FOTO  = COLS_STOCK.indexOf('foto')    + 1;
   var COL_VSB   = COLS_STOCK.indexOf('vsb')     + 1;
-  var COL_MARCA = COLS_STOCK.indexOf('marca')   + 1;
   var COL_MOD   = COLS_STOCK.indexOf('modelo')  + 1;
   var COL_VER   = COLS_STOCK.indexOf('version') + 1;
 
-  // Debug: mostrar primeras claves de byName y del Excel para detectar el desfase
-  var nameKeys = Object.keys(byName).slice(0, 5);
-  Logger.log('Ejemplo claves byName: ' + JSON.stringify(nameKeys));
-  var excelKeys = [];
-  for (var ii = 1; ii < rows.length && excelKeys.length < 5; ii++) {
-    var dm = String(rows[ii][COL_MARCA-1]||'').trim();
+  // Debug: mostrar primeras claves de byKey y del Excel
+  var excelSample = [];
+  for (var ii = 1; ii < rows.length && excelSample.length < 3; ii++) {
     var mo = String(rows[ii][COL_MOD-1]||'').trim();
     var ve = String(rows[ii][COL_VER-1]||'').trim();
-    if (dm) excelKeys.push(normKey(dm + ' ' + mo + ' ' + ve));
+    if (mo) excelSample.push(excelToMatchKey(mo, ve));
   }
-  Logger.log('Ejemplo claves Excel: ' + JSON.stringify(excelKeys));
+  Logger.log('Ej claves byKey: '   + JSON.stringify(Object.keys(byKey).slice(0,3)));
+  Logger.log('Ej claves Excel: '   + JSON.stringify(excelSample));
 
   for (var i = 1; i < rows.length; i++) {
-    var vsb     = String(rows[i][COL_VSB   - 1] || '').trim();
-    var marca   = String(rows[i][COL_MARCA - 1] || '').trim();
-    var modelo  = String(rows[i][COL_MOD   - 1] || '').trim();
-    var version = String(rows[i][COL_VER   - 1] || '').trim();
+    var vsb     = String(rows[i][COL_VSB - 1] || '').trim();
+    var modelo  = String(rows[i][COL_MOD - 1] || '').trim();
+    var version = String(rows[i][COL_VER - 1] || '').trim();
 
     var vsbNum = vsb.match(/U\d+_(\d+)/) ? vsb.match(/U\d+_(\d+)/)[1] : vsb;
-    var nk = normKey(marca + ' ' + modelo + ' ' + version);
-    var foto = byVsb[vsb] || byVsb[vsbNum] || byName[nk] || '';
+    var ek = excelToMatchKey(modelo, version);
+    var foto = byVsb[vsb] || byVsb[vsbNum] || (ek && byKey[ek]) || '';
 
     if (foto) {
       sheet.getRange(i + 1, COL_FOTO).setValue(foto);
