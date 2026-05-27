@@ -836,6 +836,38 @@ function uploadAndConvertExcel(blob) {
   return JSON.parse(res.getContentText()).id;
 }
 
+// ── ACTUALIZAR FOTOS DEL STOCK EXISTENTE ─────────────────────────────
+// Ejecuta esto directamente desde el editor para refrescar las fotos
+// sin necesitar un email de sync. Solo toca la columna "foto".
+function actualizarFotosStock() {
+  var fotoMap = scrapeQuadisFotos();
+  var ss = SpreadsheetApp.openById(SHEET_ID);
+  var sheet = ss.getSheetByName(HOJAS.stock);
+  var rows = sheet.getDataRange().getValues();
+  var updated = 0, sinVsb = 0, sinFoto = 0;
+
+  var COL_FOTO = COLS_STOCK.indexOf('foto') + 1; // columna 1-based
+  var COL_VSB  = COLS_STOCK.indexOf('vsb')  + 1;
+
+  for (var i = 1; i < rows.length; i++) {
+    var vsb = String(rows[i][COL_VSB - 1] || '').trim();
+    if (!vsb) { sinVsb++; continue; }
+
+    var vsbNum = vsb.match(/U\d+_(\d+)/) ? vsb.match(/U\d+_(\d+)/)[1] : vsb;
+    var foto = fotoMap[vsb] || fotoMap[vsbNum] || '';
+
+    if (foto) {
+      sheet.getRange(i + 1, COL_FOTO).setValue(foto);
+      updated++;
+    } else {
+      sinFoto++;
+    }
+  }
+
+  Logger.log('Fotos actualizadas: ' + updated + ' | Sin foto en web: ' + sinFoto + ' | Sin VSB: ' + sinVsb);
+  return { ok: true, updated: updated };
+}
+
 // Ejecuta esto UNA VEZ para activar el sync automático cada 10 minutos.
 // Selecciona esta función en el editor > Ejecutar
 function setupEmailSync() {
