@@ -674,16 +674,16 @@ function syncFromEmail() {
       };
     });
 
-    // Buscar fotos reales en quadisllansa.es por VSB o matrícula
+    // Buscar fotos reales en quadisllansa.es por nombre (marca+modelo+versión del folder S3)
     try {
       var fotos = scrapeQuadisFotos();
-      var byVsb = fotos.byVsb || {};
-      var byMat = fotos.byMat || {};
+      var byVsb  = fotos.byVsb  || {};
+      var byName = fotos.byName || {};
       mapped.forEach(function(v) {
         var vsbKey = v.vsb || '';
         var vsbNum = vsbKey.match(/U\d+_(\d+)/) ? vsbKey.match(/U\d+_(\d+)/)[1] : vsbKey;
-        var mat = (v.matricula || '').replace(/[- ]/g, '').toUpperCase();
-        v.foto = byVsb[vsbKey] || byVsb[vsbNum] || byMat[mat] || '';
+        var nk = normKey((v.marca||'') + ' ' + (v.modelo||'') + ' ' + (v.version||''));
+        v.foto = byVsb[vsbKey] || byVsb[vsbNum] || byName[nk] || '';
       });
       Logger.log('Fotos asignadas: ' + mapped.filter(function(v){return v.foto && v.foto.indexOf('http')===0;}).length);
     } catch(e) {
@@ -711,11 +711,27 @@ function syncFromEmail() {
 // Devuelve { "24213": "https://...foto1.jpg|https://...foto2.jpg", ... }
 
 // Regex que extrae el VSB del número al final del nombre de carpeta S3.
-// Formato real: /GestorQuadis/Vehiculos/Nissan_Juke_DIG-T%20..._513964/e01jpg-1.jpg
-//                                                                 ^^^^^^ VSB
+// Formato real: /GestorQuadis/Vehiculos/Nissan_Qashqai_DIG-T%20160%20..._515931/e01jpg-1.jpg
+// El número al final del folder (_515931) es un ID interno, NO el VSB del Excel.
+// Se usa el nombre del folder (marca_modelo_versión codificada) para casar con el Excel.
 var S3_FOTO_RE = /https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^\/]+_(\d{4,})\/[^"'\s>]+/g;
 
-function acumularFotos(html, acum) {
+// Normaliza "Nissan_Qashqai_DIG-T%20160%20mHEV%20N-Connecta_515931" →
+// "nissan qashqai dig-t 160 mhev n-connecta"
+function normKey(s) {
+  try { s = decodeURIComponent(s); } catch(e) {}
+  return s.replace(/_/g, ' ').toLowerCase().replace(/\s+/g, ' ').trim();
+}
+
+// Extrae el nombre normalizado del folder S3 (sin el sufijo _INTERNALID).
+// Ejemplo: ".../Vehiculos/Nissan_Qashqai_DIG-T%20160_515931/e01.jpg"
+//          → "nissan qashqai dig-t 160"
+function folderNameFromUrl(url) {
+  var fm = url.match(/\/Vehiculos\/(.+)_\d{4,}\//);
+  return fm ? normKey(fm[1]) : null;
+}
+
+function acumularFotos(html, acum, nameAcum) {
   var re = new RegExp(S3_FOTO_RE.source, 'g');
   var m;
   while ((m = re.exec(html)) !== null) {
@@ -723,38 +739,20 @@ function acumularFotos(html, acum) {
     var url = m[0].replace(/[.,;)>\]]+$/, ''); // limpiar basura al final
     if (!acum[vsb]) acum[vsb] = {};
     acum[vsb][url] = true;
+
+    if (nameAcum) {
+      var nk = folderNameFromUrl(url);
+      if (nk) {
+        if (!nameAcum[nk]) nameAcum[nk] = {};
+        nameAcum[nk][url] = true;
+      }
+    }
   }
-}
-
-// Extrae la matrícula del HTML de una ficha de vehículo.
-// Busca patrones de matrícula española cerca de la palabra "matrícula",
-// o en atributos data-*, o como patrón libre en el HTML.
-function extraerMatricula(html) {
-  // Patrón 1: cerca de la palabra matrícula (con/sin acento)
-  var near = html.match(/matr[ií]cula[^<]{0,200}?(\b\d{4}[- ]?[BCDFGHJKLMNPRSTUVWXYZ]{3}\b)/i);
-  if (near) return near[1].replace(/[- ]/g, '').toUpperCase();
-
-  // Patrón 2: formato antiguo (ej. M-1234-AB, MA1234AB)
-  var old = html.match(/matr[ií]cula[^<]{0,200}?(\b[A-Z]{1,2}[- ]?\d{4}[- ]?[A-Z]{2}\b)/i);
-  if (old) return old[1].replace(/[- ]/g, '').toUpperCase();
-
-  // Patrón 3: data-matricula o atributos similares
-  var attr = html.match(/data-matr[ií]cula\s*=\s*["']([^"']+)["']/i);
-  if (attr) return attr[1].replace(/[- ]/g, '').toUpperCase();
-
-  // Patrón 4: valor en celda/span justo después de etiqueta con "Matr"
-  var cell = html.match(/<t[dh][^>]*>\s*[Mm]atr[ií]cula\s*<\/t[dh]>\s*<t[dh][^>]*>\s*([A-Z0-9 -]{6,10})\s*<\/t[dh]>/i);
-  if (cell) {
-    var plate = cell[1].replace(/[- ]/g, '').toUpperCase();
-    if (/^\d{4}[A-Z]{3}$/.test(plate) || /^[A-Z]{1,2}\d{4}[A-Z]{2}$/.test(plate)) return plate;
-  }
-
-  return null;
 }
 
 function scrapeQuadisFotos() {
-  var acum = {};    // { vsb: { url: true } } — keyed by S3 folder number
-  var matAcum = {}; // { normalizedMat: { url: true } } — keyed by matricula
+  var acum = {};     // { internalId: { url: true } }
+  var nameAcum = {}; // { "nissan qashqai dig-t 160 ...": { url: true } }
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
   // 1. Recopilar URLs de fichas. Para tras 3 páginas consecutivas sin añadir
@@ -775,7 +773,7 @@ function scrapeQuadisFotos() {
         if (res.getResponseCode() !== 200) continue;
         var html = res.getContentText();
 
-        acumularFotos(html, acum);
+        acumularFotos(html, acum, nameAcum);
 
         var linkPatterns = [
           /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
@@ -810,26 +808,12 @@ function scrapeQuadisFotos() {
 
   Logger.log('Fichas a procesar: ' + allVehicleUrls.length);
 
-  // 2. Entrar en cada ficha y acumular fotos S3 + matricula
+  // 2. Entrar en cada ficha y acumular todas sus fotos S3
   for (var i = 0; i < allVehicleUrls.length; i++) {
     try {
       var detRes = UrlFetchApp.fetch(allVehicleUrls[i], { muteHttpExceptions: true });
       if (detRes.getResponseCode() !== 200) continue;
-      var detHtml = detRes.getContentText();
-      acumularFotos(detHtml, acum);
-
-      // Extraer matricula y registrar todas las URLs S3 de esta ficha también en matAcum
-      var mat = extraerMatricula(detHtml);
-      if (mat) {
-        // Recopilar URLs S3 presentes en este HTML
-        var reDetail = new RegExp(S3_FOTO_RE.source, 'g');
-        var md;
-        if (!matAcum[mat]) matAcum[mat] = {};
-        while ((md = reDetail.exec(detHtml)) !== null) {
-          var matUrl = md[0].replace(/[.,;)>\]]+$/, '');
-          matAcum[mat][matUrl] = true;
-        }
-      }
+      acumularFotos(detRes.getContentText(), acum, nameAcum);
     } catch(e) {
       Logger.log('Error ficha ' + allVehicleUrls[i] + ': ' + e.message);
     }
@@ -838,19 +822,19 @@ function scrapeQuadisFotos() {
 
   // 3. Convertir acumuladores en mapas con URLs separadas por |
   var byVsb = {};
-  for (var vsb in acum) {
-    var urls = Object.keys(acum[vsb]);
-    if (urls.length > 0) byVsb[vsb] = urls.join('|');
+  for (var k in acum) {
+    var urls = Object.keys(acum[k]);
+    if (urls.length > 0) byVsb[k] = urls.join('|');
   }
 
-  var byMat = {};
-  for (var mat in matAcum) {
-    var murls = Object.keys(matAcum[mat]);
-    if (murls.length > 0) byMat[mat] = murls.join('|');
+  var byName = {};
+  for (var nk in nameAcum) {
+    var nurls = Object.keys(nameAcum[nk]);
+    if (nurls.length > 0) byName[nk] = nurls.join('|');
   }
 
-  Logger.log('VSB → Fotos mapeados: ' + Object.keys(byVsb).length + ' | Matrícula → Fotos: ' + Object.keys(byMat).length);
-  return { byVsb: byVsb, byMat: byMat };
+  Logger.log('Nombre → Fotos mapeados: ' + Object.keys(byName).length);
+  return { byVsb: byVsb, byName: byName };
 }
 
 // Sube un blob Excel a Google Drive y lo convierte a Google Sheets.
@@ -885,24 +869,29 @@ function uploadAndConvertExcel(blob) {
 // sin necesitar un email de sync. Solo toca la columna "foto".
 function actualizarFotosStock() {
   var fotos = scrapeQuadisFotos();
-  var byVsb = fotos.byVsb || {};
-  var byMat = fotos.byMat || {};
+  var byVsb  = fotos.byVsb  || {};
+  var byName = fotos.byName || {};
 
   var ss = SpreadsheetApp.openById(SHEET_ID);
   var sheet = ss.getSheetByName(HOJAS.stock);
   var rows = sheet.getDataRange().getValues();
   var updated = 0, sinFoto = 0;
 
-  var COL_FOTO = COLS_STOCK.indexOf('foto') + 1; // columna 1-based
-  var COL_VSB  = COLS_STOCK.indexOf('vsb')  + 1;
-  var COL_MAT  = COLS_STOCK.indexOf('matricula') + 1;
+  var COL_FOTO  = COLS_STOCK.indexOf('foto')    + 1;
+  var COL_VSB   = COLS_STOCK.indexOf('vsb')     + 1;
+  var COL_MARCA = COLS_STOCK.indexOf('marca')   + 1;
+  var COL_MOD   = COLS_STOCK.indexOf('modelo')  + 1;
+  var COL_VER   = COLS_STOCK.indexOf('version') + 1;
 
   for (var i = 1; i < rows.length; i++) {
-    var vsb = String(rows[i][COL_VSB - 1] || '').trim();
-    var mat = String(rows[i][COL_MAT - 1] || '').replace(/[- ]/g, '').toUpperCase();
+    var vsb     = String(rows[i][COL_VSB   - 1] || '').trim();
+    var marca   = String(rows[i][COL_MARCA - 1] || '').trim();
+    var modelo  = String(rows[i][COL_MOD   - 1] || '').trim();
+    var version = String(rows[i][COL_VER   - 1] || '').trim();
 
     var vsbNum = vsb.match(/U\d+_(\d+)/) ? vsb.match(/U\d+_(\d+)/)[1] : vsb;
-    var foto = byVsb[vsb] || byVsb[vsbNum] || byMat[mat] || '';
+    var nk = normKey(marca + ' ' + modelo + ' ' + version);
+    var foto = byVsb[vsb] || byVsb[vsbNum] || byName[nk] || '';
 
     if (foto) {
       sheet.getRange(i + 1, COL_FOTO).setValue(foto);
