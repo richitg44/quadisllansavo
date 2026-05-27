@@ -674,22 +674,18 @@ function syncFromEmail() {
       };
     });
 
-    // Buscar fotos reales en quadisllansa.es por VSB
+    // Buscar fotos reales en quadisllansa.es por VSB o matrícula
     try {
-      var fotoMap = scrapeQuadisFotos();
-      if (fotoMap) {
-        mapped.forEach(function(v) {
-          // Normalizar VSB: aceptar "24213" y "U20_24213" apuntando al mismo mapa
-          var vsbKey = v.vsb || '';
-          var vsbNum = vsbKey.match(/U\d+_(\d+)/) ? vsbKey.match(/U\d+_(\d+)/)[1] : vsbKey;
-          if (fotoMap[vsbKey]) {
-            v.foto = fotoMap[vsbKey];
-          } else if (vsbNum && fotoMap[vsbNum]) {
-            v.foto = fotoMap[vsbNum];
-          }
-        });
-        Logger.log('Fotos asignadas: ' + mapped.filter(function(v){return v.foto && v.foto.indexOf('http')===0;}).length);
-      }
+      var fotos = scrapeQuadisFotos();
+      var byVsb = fotos.byVsb || {};
+      var byMat = fotos.byMat || {};
+      mapped.forEach(function(v) {
+        var vsbKey = v.vsb || '';
+        var vsbNum = vsbKey.match(/U\d+_(\d+)/) ? vsbKey.match(/U\d+_(\d+)/)[1] : vsbKey;
+        var mat = (v.matricula || '').replace(/[- ]/g, '').toUpperCase();
+        v.foto = byVsb[vsbKey] || byVsb[vsbNum] || byMat[mat] || '';
+      });
+      Logger.log('Fotos asignadas: ' + mapped.filter(function(v){return v.foto && v.foto.indexOf('http')===0;}).length);
     } catch(e) {
       Logger.log('Error scraping fotos: ' + e.message);
     }
@@ -730,8 +726,35 @@ function acumularFotos(html, acum) {
   }
 }
 
+// Extrae la matrícula del HTML de una ficha de vehículo.
+// Busca patrones de matrícula española cerca de la palabra "matrícula",
+// o en atributos data-*, o como patrón libre en el HTML.
+function extraerMatricula(html) {
+  // Patrón 1: cerca de la palabra matrícula (con/sin acento)
+  var near = html.match(/matr[ií]cula[^<]{0,200}?(\b\d{4}[- ]?[BCDFGHJKLMNPRSTUVWXYZ]{3}\b)/i);
+  if (near) return near[1].replace(/[- ]/g, '').toUpperCase();
+
+  // Patrón 2: formato antiguo (ej. M-1234-AB, MA1234AB)
+  var old = html.match(/matr[ií]cula[^<]{0,200}?(\b[A-Z]{1,2}[- ]?\d{4}[- ]?[A-Z]{2}\b)/i);
+  if (old) return old[1].replace(/[- ]/g, '').toUpperCase();
+
+  // Patrón 3: data-matricula o atributos similares
+  var attr = html.match(/data-matr[ií]cula\s*=\s*["']([^"']+)["']/i);
+  if (attr) return attr[1].replace(/[- ]/g, '').toUpperCase();
+
+  // Patrón 4: valor en celda/span justo después de etiqueta con "Matr"
+  var cell = html.match(/<t[dh][^>]*>\s*[Mm]atr[ií]cula\s*<\/t[dh]>\s*<t[dh][^>]*>\s*([A-Z0-9 -]{6,10})\s*<\/t[dh]>/i);
+  if (cell) {
+    var plate = cell[1].replace(/[- ]/g, '').toUpperCase();
+    if (/^\d{4}[A-Z]{3}$/.test(plate) || /^[A-Z]{1,2}\d{4}[A-Z]{2}$/.test(plate)) return plate;
+  }
+
+  return null;
+}
+
 function scrapeQuadisFotos() {
-  var acum = {}; // { vsb: { url: true } }
+  var acum = {};    // { vsb: { url: true } } — keyed by S3 folder number
+  var matAcum = {}; // { normalizedMat: { url: true } } — keyed by matricula
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
   // 1. Recopilar URLs de fichas. Para tras 3 páginas consecutivas sin añadir
@@ -787,27 +810,47 @@ function scrapeQuadisFotos() {
 
   Logger.log('Fichas a procesar: ' + allVehicleUrls.length);
 
-  // 2. Entrar en cada ficha y acumular todas sus fotos S3
+  // 2. Entrar en cada ficha y acumular fotos S3 + matricula
   for (var i = 0; i < allVehicleUrls.length; i++) {
     try {
       var detRes = UrlFetchApp.fetch(allVehicleUrls[i], { muteHttpExceptions: true });
       if (detRes.getResponseCode() !== 200) continue;
-      acumularFotos(detRes.getContentText(), acum);
+      var detHtml = detRes.getContentText();
+      acumularFotos(detHtml, acum);
+
+      // Extraer matricula y registrar todas las URLs S3 de esta ficha también en matAcum
+      var mat = extraerMatricula(detHtml);
+      if (mat) {
+        // Recopilar URLs S3 presentes en este HTML
+        var reDetail = new RegExp(S3_FOTO_RE.source, 'g');
+        var md;
+        if (!matAcum[mat]) matAcum[mat] = {};
+        while ((md = reDetail.exec(detHtml)) !== null) {
+          var matUrl = md[0].replace(/[.,;)>\]]+$/, '');
+          matAcum[mat][matUrl] = true;
+        }
+      }
     } catch(e) {
       Logger.log('Error ficha ' + allVehicleUrls[i] + ': ' + e.message);
     }
     if (i % 10 === 9) Utilities.sleep(1000);
   }
 
-  // 3. Convertir el acumulador en fotoMap con URLs separadas por |
-  var fotoMap = {};
+  // 3. Convertir acumuladores en mapas con URLs separadas por |
+  var byVsb = {};
   for (var vsb in acum) {
     var urls = Object.keys(acum[vsb]);
-    if (urls.length > 0) fotoMap[vsb] = urls.join('|');
+    if (urls.length > 0) byVsb[vsb] = urls.join('|');
   }
 
-  Logger.log('VSB → Fotos mapeados: ' + Object.keys(fotoMap).length);
-  return fotoMap;
+  var byMat = {};
+  for (var mat in matAcum) {
+    var murls = Object.keys(matAcum[mat]);
+    if (murls.length > 0) byMat[mat] = murls.join('|');
+  }
+
+  Logger.log('VSB → Fotos mapeados: ' + Object.keys(byVsb).length + ' | Matrícula → Fotos: ' + Object.keys(byMat).length);
+  return { byVsb: byVsb, byMat: byMat };
 }
 
 // Sube un blob Excel a Google Drive y lo convierte a Google Sheets.
@@ -841,21 +884,25 @@ function uploadAndConvertExcel(blob) {
 // Ejecuta esto directamente desde el editor para refrescar las fotos
 // sin necesitar un email de sync. Solo toca la columna "foto".
 function actualizarFotosStock() {
-  var fotoMap = scrapeQuadisFotos();
+  var fotos = scrapeQuadisFotos();
+  var byVsb = fotos.byVsb || {};
+  var byMat = fotos.byMat || {};
+
   var ss = SpreadsheetApp.openById(SHEET_ID);
   var sheet = ss.getSheetByName(HOJAS.stock);
   var rows = sheet.getDataRange().getValues();
-  var updated = 0, sinVsb = 0, sinFoto = 0;
+  var updated = 0, sinFoto = 0;
 
   var COL_FOTO = COLS_STOCK.indexOf('foto') + 1; // columna 1-based
   var COL_VSB  = COLS_STOCK.indexOf('vsb')  + 1;
+  var COL_MAT  = COLS_STOCK.indexOf('matricula') + 1;
 
   for (var i = 1; i < rows.length; i++) {
     var vsb = String(rows[i][COL_VSB - 1] || '').trim();
-    if (!vsb) { sinVsb++; continue; }
+    var mat = String(rows[i][COL_MAT - 1] || '').replace(/[- ]/g, '').toUpperCase();
 
     var vsbNum = vsb.match(/U\d+_(\d+)/) ? vsb.match(/U\d+_(\d+)/)[1] : vsb;
-    var foto = fotoMap[vsb] || fotoMap[vsbNum] || '';
+    var foto = byVsb[vsb] || byVsb[vsbNum] || byMat[mat] || '';
 
     if (foto) {
       sheet.getRange(i + 1, COL_FOTO).setValue(foto);
@@ -865,7 +912,7 @@ function actualizarFotosStock() {
     }
   }
 
-  Logger.log('Fotos actualizadas: ' + updated + ' | Sin foto en web: ' + sinFoto + ' | Sin VSB: ' + sinVsb);
+  Logger.log('Fotos actualizadas: ' + updated + ' | Sin foto en web: ' + sinFoto);
   return { ok: true, updated: updated };
 }
 
