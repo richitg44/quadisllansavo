@@ -427,6 +427,10 @@ function getExternalStock(sheetId) {
         if (hl === 'vsb') colMap.vsb = i;
       });
 
+      Logger.log('Columnas detectadas en Excel VO: ' + JSON.stringify(colMap));
+      Logger.log('Total filas VO (con cabecera): ' + dataVO.length);
+      var skipVendido = 0, skipMat = 0, skipPrecio = 0;
+
       var esProximamente = false;
       for (var r = 1; r < dataVO.length; r++) {
         var row = dataVO[r];
@@ -439,15 +443,15 @@ function getExternalStock(sheetId) {
         }
 
         var estado = String(row[colMap.estado] || '').trim();
-        if (estado === 'Vendido' || estado === 'IAC') continue;
+        if (estado === 'Vendido' || estado === 'IAC') { skipVendido++; continue; }
         if (!estado) estado = 'Libre';
         var mat = String(row[colMap.matricula] || '').toUpperCase().trim();
-        if (!mat || mat.length < 6) continue;
+        if (!mat || mat.length < 6) { skipMat++; continue; }
         var precio = parseInt(String(row[colMap.precio] || '0').replace(/[^0-9]/g, '')) || 0;
         if (!precio) precio = parseInt(String(row[colMap.precioBase] || '0').replace(/[^0-9]/g, '')) || 0;
 
         // Para stock principal: requerir precio. Para próximamente: permitir sin precio
-        if (!precio && !esProximamente) continue;
+        if (!precio && !esProximamente) { skipPrecio++; continue; }
 
         var fecMat = '';
         if (colMap.fecMat !== undefined && row[colMap.fecMat]) {
@@ -480,6 +484,7 @@ function getExternalStock(sheetId) {
           vsb: colMap.vsb !== undefined ? String(row[colMap.vsb] || '').trim() : ''
         });
       }
+      Logger.log('VO importados: ' + result.length + ' | Saltados vendido/IAC: ' + skipVendido + ' | Sin matrícula: ' + skipMat + ' | Sin precio: ' + skipPrecio);
     }
 
     // Leer hoja "Stock DEMO"
