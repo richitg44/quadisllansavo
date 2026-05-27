@@ -681,9 +681,8 @@ function syncFromEmail() {
       var byKey = fotos.byKey || {};
       mapped.forEach(function(v) {
         var vsbKey = v.vsb || '';
-        var vsbNum = vsbKey.match(/U\d+_(\d+)/) ? vsbKey.match(/U\d+_(\d+)/)[1] : vsbKey;
         var ek = excelToMatchKey(v.modelo || '', v.version || '');
-        v.foto = byVsb[vsbKey] || byVsb[vsbNum] || (ek && byKey[ek]) || '';
+        v.foto = byVsb[vsbKey] || (ek && byKey[ek]) || '';
       });
       Logger.log('Fotos asignadas: ' + mapped.filter(function(v){return v.foto && v.foto.indexOf('http')===0;}).length);
     } catch(e) {
@@ -835,12 +834,32 @@ function scrapeQuadisFotos() {
 
   Logger.log('Fichas a procesar: ' + allVehicleUrls.length);
 
-  // 2. Entrar en cada ficha y acumular todas sus fotos S3
+  // 2. Entrar en cada ficha: extraer fotos S3 + VSB real del HTML
+  // El HTML tiene: "ID: 515931 | ... | 40.252 km | U20_24556"
+  // U20_24556 es el VSB que coincide con el campo vsb del Excel.
+  var vsbAcum = {}; // { "U20_24556": { url: true } }
+
   for (var i = 0; i < allVehicleUrls.length; i++) {
     try {
       var detRes = UrlFetchApp.fetch(allVehicleUrls[i], { muteHttpExceptions: true });
       if (detRes.getResponseCode() !== 200) continue;
-      acumularFotos(detRes.getContentText(), acum, keyAcum);
+      var detHtml = detRes.getContentText();
+
+      // Extraer VSB real de la ficha (ej: "U20_24556")
+      var vsbM = detHtml.match(/\b(U\d{1,2}_\d{4,})\b/);
+      if (vsbM) {
+        var pageVsb = vsbM[1];
+        var re2 = new RegExp(S3_FOTO_RE.source, 'g');
+        var m2;
+        while ((m2 = re2.exec(detHtml)) !== null) {
+          var pu = m2[0].replace(/[.,;)>\]]+$/, '');
+          if (!vsbAcum[pageVsb]) vsbAcum[pageVsb] = {};
+          vsbAcum[pageVsb][pu] = true;
+        }
+      }
+
+      // Mantener keyAcum como fallback para coches sin VSB en web
+      acumularFotos(detHtml, acum, keyAcum);
     } catch(e) {
       Logger.log('Error ficha ' + allVehicleUrls[i] + ': ' + e.message);
     }
@@ -848,19 +867,19 @@ function scrapeQuadisFotos() {
   }
 
   // 3. Convertir acumuladores en mapas con URLs separadas por |
-  var byVsb = {};
-  for (var k in acum) {
-    var urls = Object.keys(acum[k]);
-    if (urls.length > 0) byVsb[k] = urls.join('|');
+  var byVsb = {}; // keyed by real VSB like "U20_24556"
+  for (var vsb in vsbAcum) {
+    var vurls = Object.keys(vsbAcum[vsb]);
+    if (vurls.length > 0) byVsb[vsb] = vurls.join('|');
   }
 
-  var byKey = {};
+  var byKey = {}; // fallback: keyed by modelo+kW+CV
   for (var k2 in keyAcum) {
     var kurls = Object.keys(keyAcum[k2]);
     if (kurls.length > 0) byKey[k2] = kurls.join('|');
   }
 
-  Logger.log('Clave → Fotos mapeados: ' + Object.keys(byKey).length + ' | Ej: ' + JSON.stringify(Object.keys(byKey).slice(0,3)));
+  Logger.log('VSB → Fotos: ' + Object.keys(byVsb).length + ' | Clave fallback: ' + Object.keys(byKey).length);
   return { byVsb: byVsb, byKey: byKey };
 }
 
@@ -909,29 +928,22 @@ function actualizarFotosStock() {
   var COL_MOD   = COLS_STOCK.indexOf('modelo')  + 1;
   var COL_VER   = COLS_STOCK.indexOf('version') + 1;
 
-  Logger.log('Todas claves byKey: ' + JSON.stringify(Object.keys(byKey)));
-
-  var noMatch = []; // debug: claves Excel que no encuentran foto
   for (var i = 1; i < rows.length; i++) {
     var vsb     = String(rows[i][COL_VSB - 1] || '').trim();
     var modelo  = String(rows[i][COL_MOD - 1] || '').trim();
     var version = String(rows[i][COL_VER - 1] || '').trim();
 
-    var vsbNum = vsb.match(/U\d+_(\d+)/) ? vsb.match(/U\d+_(\d+)/)[1] : vsb;
     var ek = excelToMatchKey(modelo, version);
-    var foto = byVsb[vsb] || byVsb[vsbNum] || (ek && byKey[ek]) || '';
+    var foto = byVsb[vsb] || (ek && byKey[ek]) || '';
 
     if (foto) {
-      // Google Sheets cell limit: 50000 chars. Truncate at last pipe if needed.
       if (foto.length > 49000) foto = foto.substring(0, foto.lastIndexOf('|', 49000));
       sheet.getRange(i + 1, COL_FOTO).setValue(foto);
       updated++;
     } else {
       sinFoto++;
-      if (noMatch.length < 10) noMatch.push({ modelo: modelo, clave: ek, ver: version.substring(0,60) });
     }
   }
-  Logger.log('Sin foto (10 ej): ' + JSON.stringify(noMatch));
 
   Logger.log('Fotos actualizadas: ' + updated + ' | Sin foto en web: ' + sinFoto);
   return { ok: true, updated: updated };
