@@ -68,6 +68,7 @@ function dispatch(action, body) {
     else if (action === "updateClienteMeta")  return updateClienteMeta(body.data);
     else if (action === "getExternalStock")   return getExternalStock(body.sheetId);
     else if (action === "syncEmail")          return syncFromEmail();
+    else if (action === "actualizarFotos")    return actualizarFotosStock();
     else return { error: "Acción desconocida: " + action };
   } catch(err) { return { error: err.message }; }
 }

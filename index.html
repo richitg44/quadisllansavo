@@ -3367,6 +3367,7 @@ async function init(){
     if(ok){
       iniciarAutoSync();
       showSyncOk(' Conectado a Google Sheets');
+      actualizarFotosBackground();
     } else {
       hideLoadingBanner();
       // URL configurada pero fallo de red € mostrar igual el dashboard
@@ -5875,6 +5876,23 @@ function renderPropuestas() {
         try { inputs[0].setSelectionRange(cursorPos, cursorPos); } catch(e) {}
       }
     }
+  }
+}
+
+async function actualizarFotosBackground() {
+  if (!SCRIPT_URL || !SHEETS_CONECTADO) return;
+  try {
+    showSyncOk('Actualizando fotos de la web... (~2 min)');
+    const r = await apiCall('actualizarFotos');
+    if (r && r.ok && r.updated > 0) {
+      await refrescarDatosSilencioso();
+      showSyncOk(' Fotos actualizadas (' + r.updated + ' vehículos)');
+    } else {
+      showSyncOk(' Conectado a Google Sheets');
+    }
+  } catch(e) {
+    console.warn('Error actualizando fotos en background:', e);
+    showSyncOk(' Conectado a Google Sheets');
   }
 }
 
