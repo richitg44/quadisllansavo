@@ -734,17 +734,22 @@ function scrapeQuadisFotos() {
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
   // 1. Recopilar URLs de fichas desde las páginas del listado.
-  // Para cuando una página no aporta URLs nuevas: WordPress redirige las
-  // páginas inexistentes a la página 1 (HTTP 200), así que no podemos
-  // fiarnos del código de respuesta para detectar el final.
+  // Problema: WordPress redirige páginas inexistentes a la pág. 1 (HTTP 200),
+  // y las barras laterales muestran coches de otras páginas, así que
+  // "sin URLs nuevas" no es señal fiable de fin de catálogo.
+  // Solución: comparar las URLs de cada página con las de la pág. 1.
+  //   · Si coinciden >80% → es una redirección → fin real del catálogo.
+  //   · Si no → es una página real, aunque todas sus URLs ya estén vistas.
   var allVehicleUrls = [];
   var seenUrls = {};
+  var page1Vehicles = null; // URLs del primer listado, para detectar redireciones
+
   for (var page = 1; page <= 30; page++) {
     var urlsToTry = page === 1
       ? [baseUrl]
       : [baseUrl + 'page/' + page + '/', baseUrl + '?paged=' + page];
 
-    var foundAny = false;
+    var foundPage = false;
     for (var ti = 0; ti < urlsToTry.length; ti++) {
       try {
         var res = UrlFetchApp.fetch(urlsToTry[ti], { muteHttpExceptions: true, followRedirects: true });
@@ -753,7 +758,9 @@ function scrapeQuadisFotos() {
 
         acumularFotos(html, acum);
 
-        var countBefore = allVehicleUrls.length;
+        // Extraer URLs de esta página (sin deduplicación global aún)
+        var pageVehicles = [];
+        var pageSeen = {};
         var linkPatterns = [
           /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
           /href="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"#?]+)"/g
@@ -762,27 +769,47 @@ function scrapeQuadisFotos() {
           var match;
           while ((match = linkPatterns[pi].exec(html)) !== null) {
             var u = match[1].replace(/\/$/, '') + '/';
-            if (!seenUrls[u] && u !== baseUrl && u.indexOf('/page/') < 0) {
-              seenUrls[u] = true;
-              allVehicleUrls.push(u);
+            if (u !== baseUrl && u.indexOf('/page/') < 0 && !pageSeen[u]) {
+              pageSeen[u] = true;
+              pageVehicles.push(u);
             }
           }
         }
 
-        if (allVehicleUrls.length > countBefore) {
-          foundAny = true;
-          Logger.log('Página ' + page + ': ' + (allVehicleUrls.length - countBefore) + ' fichas nuevas (total: ' + allVehicleUrls.length + ')');
-          break;
+        if (pageVehicles.length === 0) continue; // página sin fichas, probar otro formato
+
+        // Detectar redirección WordPress: si >80% de las URLs coinciden con pág.1 → fin
+        if (page === 1) {
+          page1Vehicles = pageVehicles;
+        } else if (page1Vehicles && page1Vehicles.length > 0) {
+          var overlap = pageVehicles.filter(function(u) {
+            return page1Vehicles.indexOf(u) >= 0;
+          }).length;
+          if (overlap / pageVehicles.length >= 0.8) {
+            Logger.log('Página ' + page + ': redirección detectada (fin del catálogo)');
+            foundPage = false;
+            break;
+          }
         }
+
+        // Añadir a la lista global con deduplicación
+        var newCount = 0;
+        for (var vi = 0; vi < pageVehicles.length; vi++) {
+          if (!seenUrls[pageVehicles[vi]]) {
+            seenUrls[pageVehicles[vi]] = true;
+            allVehicleUrls.push(pageVehicles[vi]);
+            newCount++;
+          }
+        }
+        Logger.log('Página ' + page + ': ' + pageVehicles.length + ' fichas (' + newCount + ' nuevas, total: ' + allVehicleUrls.length + ')');
+        foundPage = true;
+        break;
       } catch(e) {
         Logger.log('Error listado página ' + page + ': ' + e.message);
       }
     }
 
-    if (!foundAny) {
-      Logger.log('Página ' + page + ': sin fichas nuevas, fin del catálogo');
-      break;
-    }
+    if (!foundPage && page > 1) break;
   }
 
   Logger.log('Fichas a procesar: ' + allVehicleUrls.length);
