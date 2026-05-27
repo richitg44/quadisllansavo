@@ -929,6 +929,8 @@ function actualizarFotosStock() {
     var foto = byVsb[vsb] || byVsb[vsbNum] || (ek && byKey[ek]) || '';
 
     if (foto) {
+      // Google Sheets cell limit: 50000 chars. Truncate at last pipe if needed.
+      if (foto.length > 49000) foto = foto.substring(0, foto.lastIndexOf('|', 49000));
       sheet.getRange(i + 1, COL_FOTO).setValue(foto);
       updated++;
     } else {
