@@ -733,23 +733,18 @@ function scrapeQuadisFotos() {
   var acum = {}; // { vsb: { url: true } }
   var baseUrl = 'https://www.quadisllansa.es/vehiculos/';
 
-  // 1. Recopilar URLs de fichas desde las páginas del listado.
-  // Problema: WordPress redirige páginas inexistentes a la pág. 1 (HTTP 200),
-  // y las barras laterales muestran coches de otras páginas, así que
-  // "sin URLs nuevas" no es señal fiable de fin de catálogo.
-  // Solución: comparar las URLs de cada página con las de la pág. 1.
-  //   · Si coinciden >80% → es una redirección → fin real del catálogo.
-  //   · Si no → es una página real, aunque todas sus URLs ya estén vistas.
+  // 1. Recopilar URLs de fichas. Para tras 3 páginas consecutivas sin añadir
+  // ninguna URL nueva al listado global (cubre redireciones WordPress y fin real).
   var allVehicleUrls = [];
   var seenUrls = {};
-  var page1Vehicles = null; // URLs del primer listado, para detectar redireciones
+  var consecutiveEmpty = 0;
 
-  for (var page = 1; page <= 30; page++) {
+  for (var page = 1; page <= 50; page++) {
     var urlsToTry = page === 1
       ? [baseUrl]
       : [baseUrl + 'page/' + page + '/', baseUrl + '?paged=' + page];
 
-    var foundPage = false;
+    var newThisPage = 0;
     for (var ti = 0; ti < urlsToTry.length; ti++) {
       try {
         var res = UrlFetchApp.fetch(urlsToTry[ti], { muteHttpExceptions: true, followRedirects: true });
@@ -758,9 +753,6 @@ function scrapeQuadisFotos() {
 
         acumularFotos(html, acum);
 
-        // Extraer URLs de esta página (sin deduplicación global aún)
-        var pageVehicles = [];
-        var pageSeen = {};
         var linkPatterns = [
           /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
           /href="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"#?]+)"/g
@@ -769,47 +761,27 @@ function scrapeQuadisFotos() {
           var match;
           while ((match = linkPatterns[pi].exec(html)) !== null) {
             var u = match[1].replace(/\/$/, '') + '/';
-            if (u !== baseUrl && u.indexOf('/page/') < 0 && !pageSeen[u]) {
-              pageSeen[u] = true;
-              pageVehicles.push(u);
+            if (u !== baseUrl && u.indexOf('/page/') < 0 && !seenUrls[u]) {
+              seenUrls[u] = true;
+              allVehicleUrls.push(u);
+              newThisPage++;
             }
           }
         }
-
-        if (pageVehicles.length === 0) continue; // página sin fichas, probar otro formato
-
-        // Detectar redirección WordPress: si >80% de las URLs coinciden con pág.1 → fin
-        if (page === 1) {
-          page1Vehicles = pageVehicles;
-        } else if (page1Vehicles && page1Vehicles.length > 0) {
-          var overlap = pageVehicles.filter(function(u) {
-            return page1Vehicles.indexOf(u) >= 0;
-          }).length;
-          if (overlap / pageVehicles.length >= 0.8) {
-            Logger.log('Página ' + page + ': redirección detectada (fin del catálogo)');
-            foundPage = false;
-            break;
-          }
-        }
-
-        // Añadir a la lista global con deduplicación
-        var newCount = 0;
-        for (var vi = 0; vi < pageVehicles.length; vi++) {
-          if (!seenUrls[pageVehicles[vi]]) {
-            seenUrls[pageVehicles[vi]] = true;
-            allVehicleUrls.push(pageVehicles[vi]);
-            newCount++;
-          }
-        }
-        Logger.log('Página ' + page + ': ' + pageVehicles.length + ' fichas (' + newCount + ' nuevas, total: ' + allVehicleUrls.length + ')');
-        foundPage = true;
-        break;
+        break; // formato correcto respondió con 200, no probar el otro
       } catch(e) {
         Logger.log('Error listado página ' + page + ': ' + e.message);
       }
     }
 
-    if (!foundPage && page > 1) break;
+    if (newThisPage > 0) {
+      consecutiveEmpty = 0;
+      Logger.log('Página ' + page + ': ' + newThisPage + ' nuevas (total: ' + allVehicleUrls.length + ')');
+    } else {
+      consecutiveEmpty++;
+      Logger.log('Página ' + page + ': 0 nuevas (' + consecutiveEmpty + '/3)');
+      if (consecutiveEmpty >= 3) break;
+    }
   }
 
   Logger.log('Fichas a procesar: ' + allVehicleUrls.length);
