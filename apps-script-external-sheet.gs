@@ -714,6 +714,7 @@ function scrapeQuadisFotos() {
 
   // 1. Recorrer todas las páginas del listado
   var allVehicleUrls = [];
+  var seenUrls = {};
   for (var page = 1; page <= 15; page++) {
     var listUrl = page === 1 ? baseUrl : baseUrl + 'page/' + page + '/';
     try {
@@ -721,11 +722,21 @@ function scrapeQuadisFotos() {
       if (res.getResponseCode() !== 200) break;
       var html = res.getContentText();
 
-      // Extraer URLs de fichas individuales
-      var regex = /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g;
-      var match;
-      while ((match = regex.exec(html)) !== null) {
-        allVehicleUrls.push(match[1]);
+      // Múltiples patrones para capturar URLs de fichas individuales
+      var patterns = [
+        /data-url="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"]+)"/g,
+        /href="(https:\/\/www\.quadisllansa\.es\/vehiculos\/[^"#?]+)"/g
+      ];
+      for (var pi = 0; pi < patterns.length; pi++) {
+        var match;
+        while ((match = patterns[pi].exec(html)) !== null) {
+          var u = match[1].replace(/\/$/, '') + '/';
+          // Descartar URLs de paginación o de la raíz del listado
+          if (!seenUrls[u] && u !== baseUrl && u.indexOf('/page/') < 0) {
+            seenUrls[u] = true;
+            allVehicleUrls.push(u);
+          }
+        }
       }
 
       // Si no hay link a página siguiente, salir
@@ -738,40 +749,46 @@ function scrapeQuadisFotos() {
 
   Logger.log('Vehículos encontrados en web: ' + allVehicleUrls.length);
 
-  // 2. Recorrer cada ficha para extraer VSB y foto
+  // 2. Recorrer cada ficha para extraer VSB y fotos
   for (var i = 0; i < allVehicleUrls.length; i++) {
     try {
       var detRes = UrlFetchApp.fetch(allVehicleUrls[i], { muteHttpExceptions: true });
       if (detRes.getResponseCode() !== 200) continue;
       var detHtml = detRes.getContentText();
 
-      // Extraer VSB: buscar patrón U20_XXXXX o similar
-      var vsbMatch = detHtml.match(/U\d+_(\d+)/);
-      if (!vsbMatch) continue;
-      var vsb = vsbMatch[1];
+      // Extraer VSB: buscar patrón U20_XXXXX o variantes
+      var vsb = null;
+      var vsbPatterns = [/U\d+_(\d+)/, /"vsb"\s*:\s*"?(\d+)"?/i, /[?&]vsb[=:](\d+)/i];
+      for (var vp = 0; vp < vsbPatterns.length; vp++) {
+        var vm = detHtml.match(vsbPatterns[vp]);
+        if (vm) { vsb = vm[1]; break; }
+      }
+      if (!vsb) continue;
 
-      // Extraer TODAS las fotos del vehículo
-      // Extraer WebID de la URL para filtrar solo fotos de este coche
-      var webIdMatch = allVehicleUrls[i].match(/\/(\d+)\/?$/);
-      var webId = webIdMatch ? webIdMatch[1] : '';
-      var allFotos = detHtml.match(/https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^"'\s]+/g);
-      if (allFotos && webId) {
-        var seen = {};
-        var uniqueFotos = [];
-        for (var f = 0; f < allFotos.length; f++) {
-          var url = allFotos[f];
-          // Solo fotos que contengan el WebID de este vehículo
-          if (url.indexOf('_' + webId + '/') >= 0 && !seen[url]) {
-            seen[url] = true;
-            uniqueFotos.push(url);
-          }
-        }
-        if (uniqueFotos.length > 0) {
-          fotoMap[vsb] = uniqueFotos.join('|');
+      var allFotos = detHtml.match(/https:\/\/quadis\.s3\.amazonaws\.com\/GestorQuadis\/Vehiculos\/[^"'\s>]+/g);
+      if (!allFotos) continue;
+
+      // Filtrar por VSB en la ruta S3 (el directorio del vehículo contiene el VSB)
+      var seen = {};
+      var vsbFotos = [];
+      var allUnique = [];
+      for (var f = 0; f < allFotos.length; f++) {
+        var url = allFotos[f];
+        if (seen[url]) continue;
+        seen[url] = true;
+        allUnique.push(url);
+        if (url.indexOf('_' + vsb + '/') >= 0 || url.indexOf('/' + vsb + '/') >= 0) {
+          vsbFotos.push(url);
         }
       }
+
+      // Usar fotos filtradas por VSB; si ninguna coincide, usar todas las únicas de la página
+      var finalFotos = vsbFotos.length > 0 ? vsbFotos : allUnique;
+      if (finalFotos.length > 0) {
+        fotoMap[vsb] = finalFotos.join('|');
+      }
     } catch(e) {
-      // Continuar con el siguiente
+      Logger.log('Error ficha ' + allVehicleUrls[i] + ': ' + e.message);
     }
 
     // Pausa pequeña para no sobrecargar el servidor
