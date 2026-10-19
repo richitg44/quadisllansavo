@@ -332,7 +332,7 @@ function stockToRow(v) {
   return [
     v.id||"", v.matricula||"", v.marca||"Nissan", v.modelo||"", v.version||"",
     v.año||"", v.km||0, v.precio||0, v.color||"",
-    v.combustible||"", v.cambio||"", v.etiqueta||"", v.foto||"🚗",
+    v.combustible||"", v.cambio||"", v.etiqueta||"", v.foto||"",
     v.isNew ? "SI" : "",
     v.precioContado||0, v.procedencia||"",
     v.estado||"", v.tipo||"", limpiarFecha(v.fecMat), v.impFinanciar||0, v.vsb||""
